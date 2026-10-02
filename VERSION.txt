@@ -1,0 +1,5 @@
+HearPitch Local
+Version: V260924A
+Release: HF4 — adds optional isolated ROSVOT + RMVPE singing-transcription engine with CUDA runtime installer and model status check.
+Release type: Windows local-first Python MVP
+Audio privacy: Local processing by default; optional AI review sends structured score events only, never original audio.

@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0f1d3a" />
+  <title>HearPitch Local · V260924A</title>
+  <link rel="stylesheet" href="/static/styles.css?v=V260924A-HF4" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">♫</div>
+        <div><strong>HearPitch Local</strong><span>V260924A · HF4 · 本机候选转谱</span></div>
+      </div>
+      <div class="topbar-actions">
+        <span class="local-badge">本机处理 · 不上传音频</span>
+        <button class="icon-button" id="settingsButton" title="AI 校对设置">设置</button>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero" id="uploadSection">
+        <div class="hero-copy">
+          <p class="eyebrow">LOCAL-FIRST MELODY TRANSCRIPTION</p>
+          <h1>把清唱或独奏，变成<br /><em>可校正的候选谱</em></h1>
+          <p class="hero-text">上传 MP3、WAV 或其他常见音频格式。HearPitch 会在此电脑中提取单旋律候选，并导出 MIDI、MusicXML 和 JSON。</p>
+          <div class="capability-pills">
+            <span>单人清唱</span><span>单旋律独奏</span><span>原音回听</span><span>规则校验</span>
+          </div>
+        </div>
+        <form class="upload-card" id="uploadForm">
+          <label class="drop-zone" id="dropZone" for="audioInput">
+            <input id="audioInput" name="audio" type="file" accept="audio/*,.wav,.mp3,.flac,.ogg,.m4a,.aac" required />
+            <span class="upload-icon">↑</span>
+            <strong id="fileLabel">选择或拖入音频文件</strong>
+            <small>推荐：无伴奏、单声源、清晰录音</small>
+          </label>
+          <label class="field-label">项目标题 <input id="titleInput" name="title" maxlength="80" placeholder="例如：秋日练习旋律" /></label>
+          <div class="analysis-settings">
+            <div class="setting-grid">
+              <label class="field-label">识别预设
+                <select id="presetInput" name="preset">
+                  <option value="conservative" selected>保守（默认，减少杂音碎音）</option>
+                  <option value="balanced">平衡</option>
+                  <option value="sensitive">敏感（更多弱音和短音）</option>
+                  <option value="custom">自定义（手动参数）</option>
+                </select>
+              </label>
+              <label class="field-label">转录引擎
+                <select id="engineInput" name="engine">
+                  <option value="auto" selected>自动（优先 Basic Pitch）</option>
+                  <option value="basic-pitch">Basic Pitch（需已安装）</option>
+                  <option value="pyin">pYIN（本机轻量回退）</option>
+                  <option value="rosvot-rmvpe">ROSVOT + RMVPE（歌声转谱，需单独安装 CUDA 模型）</option>
+                </select>
+              </label>
+            </div>
+            <p class="sensitivity-hint" id="rosvotStatus" aria-live="polite">ROSVOT + RMVPE：正在检查可选模型安装状态…</p>
+            <label class="range-label" for="sensitivityInput">识别灵敏度 <strong id="sensitivityValue">40</strong><span>/ 100</span>
+              <input id="sensitivityInput" name="sensitivity" type="range" min="0" max="100" step="1" value="40" />
+            </label>
+            <p class="sensitivity-hint" id="sensitivityHint">保守：优先减少呼吸声、颤音和杂音造成的碎音；弱音可能被忽略。</p>
+            <details class="advanced-settings">
+              <summary>高级过滤参数</summary>
+              <div class="setting-grid">
+                <label class="field-label">最短音符时长（ms）<input id="minDurationInput" name="min_note_duration_ms" type="number" min="50" max="500" step="10" value="180" /></label>
+                <label class="field-label">最低音高置信度（%）<input id="minConfidenceInput" name="min_confidence" type="number" min="0" max="100" step="1" value="70" /></label>
+                <label class="field-label">同音合并容差（ms）<input id="mergeGapInput" name="merge_gap_ms" type="number" min="0" max="300" step="5" value="90" /></label>
+              </div>
+              <p class="form-note">提高最短时长 / 最低置信度会更保守；提高合并容差会将相邻同音碎片合并。</p>
+            </details>
+          </div>
+          <label class="check-row"><input id="longAudioMode" type="checkbox" name="long_audio_mode" /> 开启长音频模式 <span>默认建议 300 秒以内</span></label>
+          <button class="primary-button" id="transcribeButton" type="submit">开始本机转谱 <span>→</span></button>
+          <p class="form-note">结果是候选谱，需通过回听和编辑确认。完整混音、伴奏、多人或和弦不在首版承诺范围。</p>
+          <section class="job-panel hidden" id="jobPanel" aria-live="polite">
+            <div class="job-heading"><strong id="jobPhase">正在准备本机任务…</strong><span id="jobPercent">0%</span></div>
+            <div class="progress-track"><div class="progress-bar" id="jobProgressBar"></div></div>
+            <p class="job-elapsed" id="jobElapsed">已运行 0 秒</p>
+            <ul class="job-log" id="jobLog"></ul>
+          </section>
+          <div class="recent-projects hidden" id="recentProjects"></div>
+        </form>
+      </section>
+
+      <section class="workspace hidden" id="workspace">
+        <div class="workspace-bar">
+          <div>
+            <p class="eyebrow">CURRENT PROJECT</p>
+            <h2 id="projectTitle">候选谱</h2>
+            <p id="projectMeta">正在加载…</p>
+          </div>
+          <div class="workspace-actions">
+            <button class="secondary-button" id="saveButton">保存修订</button>
+            <button class="secondary-button" id="aiReviewButton">AI 校对建议</button>
+            <div class="export-menu">
+              <button class="primary-button small" id="exportButton">导出 <span>↓</span></button>
+              <div class="export-popover hidden" id="exportPopover">
+                <a id="downloadMidi" href="#">MIDI (.mid)</a>
+                <a id="downloadXml" href="#">MusicXML (.musicxml)</a>
+                <a id="downloadJson" href="#">项目 JSON (.json)</a>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="status-strip" id="statusStrip"></div>
+        <div class="metrics" id="metrics"></div>
+
+        <div class="workspace-grid">
+          <section class="panel score-panel">
+            <div class="panel-heading">
+              <div><p class="eyebrow">CANDIDATE SCORE</p><h3>简谱候选</h3></div>
+              <div class="view-toggles"><button class="active">简谱</button><button disabled>五线谱（后续）</button><button disabled>钢琴卷帘（后续）</button></div>
+            </div>
+            <div class="score-context" id="scoreContext"></div>
+            <div class="notation-wrap"><div class="notation" id="notation"></div></div>
+            <div class="audio-controls">
+              <audio id="audioPlayer" controls></audio>
+              <p>原音保留在本机项目目录。编辑音符时请回听确认；低置信度音符以橙色强调。</p>
+            </div>
+          </section>
+
+          <aside class="side-stack">
+            <section class="panel">
+              <div class="panel-heading compact"><div><p class="eyebrow">QUALITY</p><h3>输入与规则检查</h3></div></div>
+              <div id="qualityNotices" class="notices"></div>
+              <div id="ruleFindings" class="findings"></div>
+            </section>
+            <section class="panel ai-panel">
+              <div class="panel-heading compact"><div><p class="eyebrow">OPTIONAL AI</p><h3>AI 谱面校对</h3></div></div>
+              <p>只发送结构化音符事件给所选 OpenAI 兼容接口；不会上传原始音频，也不会自动修改谱面。</p>
+              <select id="reviewProfile"><option value="">选择 AI 配置…</option></select>
+              <textarea id="reviewInstruction" maxlength="2000" placeholder="可选：例如“重点检查副歌的节奏是否存在过短音符”"></textarea>
+              <button class="secondary-button full" id="runReviewButton">生成校对建议</button>
+              <div class="review-result hidden" id="reviewResult"></div>
+            </section>
+          </aside>
+        </div>
+
+        <section class="panel editor-panel">
+          <div class="panel-heading"><div><p class="eyebrow">EDIT EVENTS</p><h3>音符编辑</h3></div><p>改动后点击“保存修订”重新生成导出文件。</p></div>
+          <div class="table-wrap"><table><thead><tr><th>#</th><th>起点 (s)</th><th>终点 (s)</th><th>MIDI</th><th>音名</th><th>简谱</th><th>置信度</th><th>操作</th></tr></thead><tbody id="notesTable"></tbody></table></div>
+          <button class="add-note" id="addNoteButton">+ 新增音符</button>
+        </section>
+      </section>
+
+      <section class="empty-state" id="emptyState">
+        <span>01</span><div><strong>先从单声源开始</strong><p>首版以可靠、可校正为目标。请优先上传清唱、口哨或单旋律乐器独奏，不要上传带伴奏的完整歌曲。</p></div>
+        <span>02</span><div><strong>音频留在本机</strong><p>网页只监听 <code>127.0.0.1</code>。项目、音频、谱面和导出文件默认保存于 Documents/HearPitchLocal。</p></div>
+        <span>03</span><div><strong>AI 是可选校对层</strong><p>不配置 API Key 也能转谱。启用 AI 后仅上传结构化候选谱用于提出建议，任何修改都需你确认。</p></div>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="settingsDialog">
+    <form class="settings-dialog" id="settingsForm" novalidate>
+      <div class="dialog-heading"><div><p class="eyebrow">LOCAL PROFILE</p><h2>AI 校对设置</h2></div><button class="icon-button" id="settingsCloseButton" type="button">关闭</button></div>
+      <p>基础听谱不需要 API Key。此页仅配置 OpenAI 兼容的 AI 校对接口。API Key 会保存至 Windows Credential Manager，<strong>不会写入 profiles.json，也不会在此处回显</strong>。</p>
+      <input type="hidden" id="profileId" />
+      <label class="field-label">配置名称<input id="profileName" required maxlength="200" placeholder="例如：OpenAI-校对" /></label>
+      <label class="field-label">Base URL<input id="profileBaseUrl" required maxlength="500" placeholder="https://api.openai.com/v1" /></label>
+      <label class="field-label">模型名<input id="profileModel" required maxlength="200" placeholder="例如：gpt-5-mini" /></label>
+      <label class="field-label">Temperature<input id="profileTemperature" type="number" min="0" max="2" step="0.1" value="0.2" /></label>
+      <label class="field-label">API Key<input id="profileApiKey" type="password" autocomplete="new-password" placeholder="新增时必填；编辑时留空则保持现有凭据" /></label>
+      <p class="credential-message" id="profileCredentialMessage">API Key 仅保存在 Windows Credential Manager，不写入 profiles.json。</p>
+      <div class="dialog-actions"><button type="button" class="danger-button" id="deleteProfileButton">删除当前配置</button><button class="primary-button" id="saveProfileButton" type="submit">安全保存配置</button></div>
+      <div id="profileList" class="profile-list"></div>
+    </form>
+  </dialog>
+
+  <div class="toast hidden" id="toast"></div>
+  <script src="/static/app.js?v=V260924A-HF4"></script>
+</body>
+</html>

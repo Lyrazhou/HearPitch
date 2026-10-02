@@ -1,0 +1,40 @@
+# Python runtime
+.venv/
+.venv-hf4-test/
+tests/.rosvot-test-data/
+tests/.rosvot-staging/
+tests/.rosvot-cuda-data/
+Documents/HearPitchLocal/models/rosvot/
+models/rosvot/
+__pycache__/
+*.py[cod]
+hearpitch.py
+
+# Local HearPitch data
+.hearpitch-data/
+profiles.json
+projects/
+temp/
+
+# Test output
+tests/.test-data/
+tests/.cli-data/
+tests/.web-data/
+tests/.hf3-data/
+tests/.hf3-staging/
+tests/.cli-hf3/
+tests/.web-hf3/
+tests/api_*.json
+tests/api_*.mid
+tests/api_*.musicxml
+tests/api_*.wav
+tests/api_project_id.txt
+tests/final_*.json
+tests/profile_*.json
+tests/profile_id.txt
+tests/hf3_*.json
+tests/hf3_*_id.txt
+tests/cli_hf3_result.json
+
+# Packaging
+*.zip
