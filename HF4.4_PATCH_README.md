@@ -1,8 +1,8 @@
-# HearPitch HF4.3 ROSVOT 错误修复补丁
+# HearPitch HF4.4 ROSVOT 导入路径修复补丁
 
 ## 修复内容
 
-修复 ROSVOT 推理子进程失败时错误引用未定义变量 `completed` 的问题。升级后，HearPitch 会显示推理子进程的真实退出码及日志尾部，而不会被 `name 'completed' is not defined` 遮蔽。
+修复 ROSVOT 推理时上游模块导入失败：`ModuleNotFoundError: No module named 'utils'`。HearPitch 现在会把本机 ROSVOT 源码目录加入独立推理子进程的 `PYTHONPATH`，使顶层 `utils` 包能被找到。HF4.4 也包含 HF4.3 对真实推理退出码和日志的诊断修复。
 
 ## 覆盖升级步骤
 
@@ -15,5 +15,5 @@
 
 若任务再次失败，请把新的完整错误提示和 HearPitch 命令窗口中对应的 ROSVOT 日志发回，以便按真实子进程错误继续排查。
 
-版本：V260924A HF4.3
-GitHub commit：`9194f1d`
+版本：V260924A HF4.4
+GitHub commit：见 GitHub `main` 最新提交
