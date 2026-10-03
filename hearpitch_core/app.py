@@ -1,4 +1,4 @@
-"""Local web interface for HearPitch Local V261003A."""
+"""Local web interface for HearPitch Local V261003B."""
 
 from __future__ import annotations
 

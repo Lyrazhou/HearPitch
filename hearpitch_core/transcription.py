@@ -543,7 +543,16 @@ def export_midi(score: dict[str, Any], destination: Path) -> Path:
     midi_file.tracks.append(track)
     track.append(mido.MetaMessage("track_name", name=score.get("title", "HearPitch"), time=0))
     track.append(mido.MetaMessage("set_tempo", tempo=mido.bpm2tempo(tempo), time=0))
-    track.append(mido.MetaMessage("time_signature", numerator=4, denominator=4, time=0))
+    signature = score.get("time_signature") or {}
+    signature_value = signature.get("value", "4/4") if isinstance(signature, dict) else str(signature)
+    try:
+        numerator_text, denominator_text = str(signature_value).split("/", 1)
+        numerator, denominator = int(numerator_text), int(denominator_text)
+        if not (1 <= numerator <= 32 and denominator in {1, 2, 4, 8, 16, 32}):
+            raise ValueError
+    except (TypeError, ValueError):
+        numerator, denominator = 4, 4
+    track.append(mido.MetaMessage("time_signature", numerator=numerator, denominator=denominator, time=0))
     seconds_per_tick = (60.0 / tempo) / ticks_per_beat
     previous_tick = 0
     for note in sorted(score.get("notes", []), key=lambda item: float(item["onset"])):
@@ -573,9 +582,18 @@ def export_musicxml(score: dict[str, Any], destination: Path) -> Path:
     measure = ET.SubElement(part, "measure", number="1")
     attributes = ET.SubElement(measure, "attributes")
     ET.SubElement(attributes, "divisions").text = str(divisions)
+    signature = score.get("time_signature") or {}
+    signature_value = signature.get("value", "4/4") if isinstance(signature, dict) else str(signature)
+    try:
+        beats_text, beat_type_text = str(signature_value).split("/", 1)
+        beats_value, beat_type = int(beats_text), int(beat_type_text)
+        if not (1 <= beats_value <= 32 and beat_type in {1, 2, 4, 8, 16, 32}):
+            raise ValueError
+    except (TypeError, ValueError):
+        beats_value, beat_type = 4, 4
     time = ET.SubElement(attributes, "time")
-    ET.SubElement(time, "beats").text = "4"
-    ET.SubElement(time, "beat-type").text = "4"
+    ET.SubElement(time, "beats").text = str(beats_value)
+    ET.SubElement(time, "beat-type").text = str(beat_type)
     clef = ET.SubElement(attributes, "clef")
     ET.SubElement(clef, "sign").text = "G"
     ET.SubElement(clef, "line").text = "2"
@@ -585,13 +603,24 @@ def export_musicxml(score: dict[str, Any], destination: Path) -> Path:
 
     measure_number = 1
     ticks_in_measure = 0
-    measure_capacity = divisions * 4
+    denominator_capacity = divisions * 4 // beat_type
+    meter_sequence = score.get("meter_sequence")
+    if not isinstance(meter_sequence, list) or not meter_sequence:
+        meter_sequence = [beats_value]
+    capacity_index = 0
+    measure_capacity = denominator_capacity * int(meter_sequence[capacity_index % len(meter_sequence)])
     for note in score.get("notes", []):
         duration = max(1, int(round(float(note["duration"]) / seconds_per_quarter * divisions)))
         if ticks_in_measure and ticks_in_measure + duration > measure_capacity:
             measure_number += 1
             measure = ET.SubElement(part, "measure", number=str(measure_number))
             ticks_in_measure = 0
+            capacity_index += 1
+            measure_capacity = denominator_capacity * int(meter_sequence[capacity_index % len(meter_sequence)])
+            measure_attributes = ET.SubElement(measure, "attributes")
+            measure_time = ET.SubElement(measure_attributes, "time")
+            ET.SubElement(measure_time, "beats").text = str(meter_sequence[capacity_index % len(meter_sequence)])
+            ET.SubElement(measure_time, "beat-type").text = str(beat_type)
         xml_note = ET.SubElement(measure, "note")
         pitch = ET.SubElement(xml_note, "pitch")
         step, alter, octave = _midi_to_xml_pitch(int(note["midi"]))
@@ -725,7 +754,7 @@ def get_project(project_id: str) -> dict[str, Any]:
 def update_project_score(project_id: str, incoming_score: dict[str, Any]) -> dict[str, Any]:
     current = get_project(project_id)
     project_dir = Path(current["project"]["project_dir"])
-    allowed_top_level = {"title", "tempo_bpm", "time_signature", "key", "notes", "user_notes", "beat_taps", "tempo_mode"}
+    allowed_top_level = {"title", "tempo_bpm", "time_signature", "key", "notes", "user_notes", "beat_taps", "beat_markers", "tempo_mode", "meter_sequence", "rhythm_quantize", "pitch_quantize"}
     score = current["score"]
     for key in allowed_top_level:
         if key in incoming_score:
@@ -737,6 +766,41 @@ def update_project_score(project_id: str, incoming_score: dict[str, Any]) -> dic
         if not isinstance(taps, list) or any(not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0 for value in taps):
             raise TranscriptionError("打拍记录格式无效；时间必须是非负数字。")
         score["beat_taps"] = [round(float(value), 4) for value in taps]
+    if "beat_markers" in score:
+        markers = score["beat_markers"]
+        if not isinstance(markers, list) or len(markers) > 20000:
+            raise TranscriptionError("拍点列表格式无效或数量过多。")
+        cleaned_markers = []
+        for marker in markers:
+            if not isinstance(marker, dict):
+                raise TranscriptionError("拍点标记格式无效。")
+            try:
+                time_value = float(marker["time"])
+                beat_value = int(marker["beat"])
+                bar_value = int(marker["bar"])
+            except (KeyError, TypeError, ValueError) as exc:
+                raise TranscriptionError("拍点标记缺少有效时间、拍号或小节号。") from exc
+            if not math.isfinite(time_value) or time_value < 0 or beat_value < 1 or bar_value < 1:
+                raise TranscriptionError("拍点标记必须使用非负时间及正整数拍号/小节号。")
+            cleaned = {"time": round(time_value, 4), "beat": beat_value, "bar": bar_value}
+            if "raw_time" in marker:
+                try:
+                    raw_time = float(marker["raw_time"])
+                except (TypeError, ValueError) as exc:
+                    raise TranscriptionError("拍点原始时间格式无效。") from exc
+                if not math.isfinite(raw_time) or raw_time < 0:
+                    raise TranscriptionError("拍点原始时间必须是非负数字。")
+                cleaned["raw_time"] = round(raw_time, 4)
+            cleaned_markers.append(cleaned)
+        score["beat_markers"] = sorted(cleaned_markers, key=lambda item: item["time"])
+    if "meter_sequence" in score:
+        sequence = score["meter_sequence"]
+        if not isinstance(sequence, list) or not sequence or len(sequence) > 32 or any(not isinstance(value, int) or not 1 <= value <= 32 for value in sequence):
+            raise TranscriptionError("拍号序列无效；每小节拍数应为 1 到 32 的整数。")
+    if score.get("rhythm_quantize") not in (None, "off", 8, 16, 32):
+        raise TranscriptionError("节奏量化设置无效。")
+    if score.get("pitch_quantize") not in (None, "semitone", "key_suggest", "key_strict"):
+        raise TranscriptionError("音高量化设置无效。")
     if score.get("tempo_mode") not in (None, "estimated", "tap", "manual"):
         raise TranscriptionError("速度模式无效。")
     for index, note in enumerate(score["notes"], start=1):

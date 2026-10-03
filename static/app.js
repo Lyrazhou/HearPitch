@@ -9,6 +9,15 @@ const state = {
   audioDuration: 0,
   spectrogramReady: false,
   noteDrag: null,
+  captureActive: false,
+  timeZoom: 1,
+  pitchZoom: 1,
+  audioContext: null,
+  activePreview: null,
+  lastPreviewMidi: null,
+  lastPreviewAt: 0,
+  panDrag: null,
+  suppressNoteClick: false,
 };
 
 const PRESETS = {
@@ -51,6 +60,52 @@ function midiLabel(midi) {
   return `${names[((midi % 12) + 12) % 12]}${Math.floor(midi / 12) - 1}`;
 }
 
+function constrainMidi(midi) {
+  if (!$('#strictKey')?.checked) return midi;
+  const key = $('#keySelect')?.value || state.score?.key?.tonic || 'C';
+  const mode = $('#keyMode')?.value || state.score?.key?.mode || 'major';
+  const root = keyRoot({ tonic: key });
+  const scale = mode === 'minor' ? [0, 2, 3, 5, 7, 8, 10] : [0, 2, 4, 5, 7, 9, 11];
+  const candidates = [];
+  for (let octave = 0; octave <= 10; octave += 1) for (const degree of scale) candidates.push(12 * octave + root + degree);
+  return candidates.reduce((best, value) => Math.abs(value - midi) < Math.abs(best - midi) ? value : best, candidates[0]);
+}
+
+function isMidiInSelectedKey(midi) {
+  const tonic = $('#keySelect')?.value || state.score?.key?.tonic;
+  if (!tonic) return true;
+  const mode = $('#keyMode')?.value || state.score?.key?.mode || 'major';
+  const scale = mode === 'minor' ? [0, 2, 3, 5, 7, 8, 10] : [0, 2, 4, 5, 7, 9, 11];
+  return scale.includes(((midi - keyRoot({ tonic })) % 12 + 12) % 12);
+}
+
+function previewMidi(midi, seconds = .35) {
+  try {
+    const AudioCtor = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtor) return;
+    if (!state.audioContext) state.audioContext = new AudioCtor();
+    const context = state.audioContext;
+    if (context.state === 'suspended') context.resume();
+    const now = context.currentTime;
+    if (state.activePreview) { try { state.activePreview.stop(now); } catch (_) {} }
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    oscillator.type = 'triangle';
+    oscillator.frequency.value = 440 * Math.pow(2, (midi - 69) / 12);
+    gain.gain.setValueAtTime(.0001, now);
+    gain.gain.exponentialRampToValueAtTime(.22, now + .012);
+    gain.gain.setTargetAtTime(.0001, now + Math.max(.04, seconds - .05), .025);
+    oscillator.connect(gain).connect(context.destination);
+    oscillator.start(now);
+    oscillator.stop(now + Math.max(.08, seconds));
+    state.activePreview = oscillator;
+    state.lastPreviewMidi = midi;
+    $('#canvasSelection').textContent = `试听 ${midiLabel(midi)} · MIDI ${midi}`;
+  } catch (_) {
+    // Audio preview is optional on browsers that cannot create Web Audio.
+  }
+}
+
 function keyRoot(key) {
   const names = { C: 0, 'C#': 1, Db: 1, D: 2, 'D#': 3, Eb: 3, E: 4, F: 5, 'F#': 6, Gb: 6, G: 7, 'G#': 8, Ab: 8, A: 9, 'A#': 10, Bb: 10, B: 11 };
   return names[key?.tonic] ?? 0;
@@ -82,7 +137,7 @@ function updateNoteFromRow(index, field, rawValue) {
   const note = state.score.notes[index];
   const value = Number(rawValue);
   if (!Number.isFinite(value)) return;
-  if (field === 'midi') note.midi = Math.min(127, Math.max(0, Math.round(value)));
+  if (field === 'midi') { note.midi = constrainMidi(Math.min(127, Math.max(0, Math.round(value)))); note.name = midiLabel(note.midi); previewMidi(note.midi, .2); }
   if (field === 'onset') note.onset = Math.max(0, Number(value.toFixed(4)));
   if (field === 'offset') note.offset = Math.max(note.onset + 0.03, Number(value.toFixed(4)));
   note.duration = Number((note.offset - note.onset).toFixed(4));
@@ -111,6 +166,8 @@ function renderNotation() {
     glyph.innerHTML = `<span class="note-octave">${degree.top}</span><span class="note-number">${degree.text}</span><span class="note-duration">${degree.bottom || '—'} ${note.duration.toFixed(2)}s</span>`;
     glyph.addEventListener('click', () => {
       state.selectedNote = index;
+      previewMidi(Number(note.midi), Math.max(.18, Math.min(1.2, Number(note.duration) || .35)));
+      renderSpectrogram();
       renderNotation();
       document.querySelector(`tr[data-note-index="${index}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     });
@@ -122,27 +179,40 @@ function renderSpectrogram() {
   if (!state.score || !state.spectrogramReady) return;
   const canvas = $('#spectrogramCanvas');
   const layer = $('#spectrogramNotes');
+  const image = $('#spectrogramImage');
   const duration = Math.max(.15, Number(state.score.input.duration_seconds) || state.audioDuration || 1);
-  const width = canvas.clientWidth || 1800;
-  const height = canvas.clientHeight || 576;
+  const viewportWidth = Math.max(600, $('#spectrogramScroll').clientWidth - 2);
+  const width = Math.round(viewportWidth * state.timeZoom);
+  const semitoneHeight = 12 * state.pitchZoom;
+  const height = Math.round(48 * semitoneHeight);
+  canvas.style.width = `${width}px`;
+  canvas.style.height = `${height}px`;
+  image.style.width = `${width}px`;
+  image.style.height = `${height}px`;
   layer.innerHTML = '';
+  const grid = $('#spectrogramGrid');
+  grid.style.backgroundSize = `100% ${semitoneHeight}px, 100% ${semitoneHeight * 12}px`;
+  const beatLayer = $('#spectrogramBeats');
+  beatLayer.innerHTML = '';
+  renderBeatMarkers();
   state.score.notes.forEach((note, index) => {
     const block = document.createElement('div');
-    block.className = `spectrogram-note ${note.confidence != null && Number(note.confidence) < .45 ? 'low' : ''} ${state.selectedNote === index ? 'selected' : ''}`;
+    block.className = `spectrogram-note ${note.confidence != null && Number(note.confidence) < .45 ? 'low' : ''} ${!isMidiInSelectedKey(Number(note.midi)) ? 'out-of-key' : ''} ${state.selectedNote === index ? 'selected' : ''}`;
     block.dataset.noteIndex = index;
     const left = Math.max(0, Number(note.onset) / duration * width);
     const right = Math.min(width, Number(note.offset) / duration * width);
     block.style.left = `${left}px`;
     block.style.width = `${Math.max(7, right - left)}px`;
-    block.style.top = `${Math.max(0, Math.min(height - 12, (84 - Number(note.midi) - .5) * 12))}px`;
+    block.style.top = `${Math.max(0, Math.min(height - semitoneHeight, (84 - Number(note.midi) - .5) * semitoneHeight))}px`;
     block.textContent = midiLabel(Number(note.midi));
     block.title = `#${index + 1} ${midiLabel(Number(note.midi))} · ${Number(note.onset).toFixed(2)}–${Number(note.offset).toFixed(2)} 秒；拖动编辑`;
     block.addEventListener('pointerdown', beginNoteDrag);
     block.addEventListener('click', () => {
-      if (state.noteDrag?.moved) return;
+      if (state.suppressNoteClick) { state.suppressNoteClick = false; return; }
       state.selectedNote = index;
       renderSpectrogram(); renderNotation(); renderNotesTable();
       $('#audioPlayer').currentTime = Math.max(0, Number(note.onset));
+      previewMidi(Number(note.midi), Math.max(.18, Math.min(1.2, Number(note.duration) || .35)));
     });
     layer.appendChild(block);
   });
@@ -176,9 +246,9 @@ function moveNoteDrag(event) {
   if (Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true;
   if (!drag.moved) return;
   const duration = Math.max(.15, Number(state.score.input.duration_seconds) || 1);
-  const width = $('#spectrogramCanvas').clientWidth || 1800;
+  const width = $('#spectrogramCanvas').clientWidth || 900;
   const seconds = dx / width * duration;
-  const semitones = Math.round(-dy / 12);
+  const semitones = Math.round(-dy / (12 * state.pitchZoom));
   const note = state.score.notes[drag.index];
   if (drag.mode === 'start') note.onset = Math.max(0, Math.min(drag.offset - .03, drag.onset + seconds));
   else if (drag.mode === 'end') note.offset = Math.max(drag.onset + .03, drag.offset + seconds);
@@ -186,15 +256,20 @@ function moveNoteDrag(event) {
     const delta = Math.min(Math.max(seconds, -drag.onset), duration - drag.offset);
     note.onset = drag.onset + delta;
     note.offset = drag.offset + delta;
-    note.midi = Math.max(36, Math.min(84, drag.midi + semitones));
+    note.midi = constrainMidi(Math.max(36, Math.min(84, drag.midi + semitones)));
   }
   note.duration = note.offset - note.onset;
   note.name = midiLabel(note.midi);
   note.user_edited = true;
   drag.element.style.left = `${note.onset / duration * width}px`;
   drag.element.style.width = `${Math.max(7, (note.offset - note.onset) / duration * width)}px`;
-  drag.element.style.top = `${Math.max(0, Math.min(564, (84 - note.midi - .5) * 12))}px`;
+  const semitoneHeight = 12 * state.pitchZoom;
+  drag.element.style.top = `${Math.max(0, Math.min($('#spectrogramCanvas').clientHeight - semitoneHeight, (84 - note.midi - .5) * semitoneHeight))}px`;
   drag.element.textContent = midiLabel(note.midi);
+  if (drag.midi !== note.midi && performance.now() - state.lastPreviewAt > 90) {
+    previewMidi(note.midi, .12);
+    state.lastPreviewAt = performance.now();
+  }
 }
 
 function finishNoteDrag() {
@@ -203,6 +278,7 @@ function finishNoteDrag() {
   drag.element.removeEventListener('pointermove', moveNoteDrag);
   state.noteDrag = null;
   if (drag.moved) {
+    state.suppressNoteClick = true;
     renderSpectrogram(); renderNotation(); renderNotesTable();
     showToast('音符已修改；记得保存修订。', 'success');
   }
@@ -211,31 +287,224 @@ function finishNoteDrag() {
 async function loadSpectrogram() {
   const image = $('#spectrogramImage');
   state.spectrogramReady = false;
-  image.onload = () => { state.spectrogramReady = true; renderSpectrogram(); };
+  image.onload = () => {
+    state.spectrogramReady = true;
+    renderSpectrogram();
+    const canvas = $('#spectrogramCanvas');
+    image.style.width = `${canvas.clientWidth}px`;
+    image.style.height = `${canvas.clientHeight}px`;
+  };
   image.onerror = () => showToast('声谱图生成失败；仍可用下方表格编辑音符。', 'error');
   image.src = `/api/projects/${encodeURIComponent(state.project.id)}/spectrogram?v=${Date.now()}`;
 }
 
 function renderTapReadout() {
-  const taps = state.score?.beat_taps || [];
+  const taps = state.score?.beat_markers?.map((marker) => Number(marker.raw_time ?? marker.time)) || state.score?.beat_taps || [];
   const display = $('#tapReadout');
   if (!display) return;
-  if (!taps.length) { display.textContent = '尚未打拍 · 播放音频后按空格，或点击“打拍”'; return; }
+  if (!taps.length) {
+    display.textContent = state.captureActive
+      ? `打拍已启动：${$('#beatMode')?.value === 'digits' ? '数字键标注' : '空格记拍'} · Esc 结束 · 尚无拍点`
+      : '未进入打拍模式。拍点和小节线会直接显示在声谱图上。';
+    renderBeatMarkers();
+    return;
+  }
   const intervals = taps.slice(1).map((tap, index) => tap - taps[index]).filter((gap) => gap >= .25 && gap <= 2.5);
-  const bpm = intervals.length ? 60 / (intervals.reduce((sum, gap) => sum + gap, 0) / intervals.length) : null;
-  display.textContent = `已记录 ${taps.length} 个拍点${bpm ? ` · 估算 ${bpm.toFixed(1)} BPM` : ' · 至少再打一次以估算 BPM'}`;
+  const rawBpm = intervals.length ? 60 / (intervals.reduce((sum, gap) => sum + gap, 0) / intervals.length) : null;
+  const bpm = rawBpm && rawBpm >= 30 && rawBpm <= 300 ? rawBpm : null;
+  display.textContent = `${state.captureActive ? `打拍已启动：${$('#beatMode')?.value === 'digits' ? '数字键标注' : '空格记拍'} · Esc 结束 · ` : ''}已记录 ${taps.length} 个拍点${bpm ? ` · 估算 ${bpm.toFixed(1)} BPM` : ' · 至少再打一次以估算 BPM'}`;
   if (bpm && Number.isFinite(bpm)) { state.score.tempo_bpm = Number(bpm.toFixed(2)); state.score.tempo_mode = 'tap'; }
+  renderBeatMarkers();
 }
 
-function recordBeatTap() {
+function renderBeatMarkers() {
+  if (!state.score || !state.spectrogramReady) return;
+  const beatLayer = $('#spectrogramBeats');
+  const duration = Math.max(.15, Number(state.score.input.duration_seconds) || 1);
+  const width = $('#spectrogramCanvas').clientWidth || 900;
+  const markers = state.score.beat_markers || [];
+  const beats = beatLayer;
+  beats.innerHTML = '';
+  markers.forEach((marker) => {
+    const line = document.createElement('div');
+    line.className = `beat-marker ${marker.beat === 1 ? 'bar-marker' : ''}`;
+    line.dataset.markerIndex = String(markers.indexOf(marker));
+    line.style.left = `${Number(marker.time) / duration * width}px`;
+    line.innerHTML = `<span>${marker.beat === 1 ? `小节 ${marker.bar} · ` : ''}${marker.beat}</span>`;
+    line.addEventListener('pointerdown', (event) => {
+      event.preventDefault(); event.stopPropagation();
+  const originalX = event.clientX;
+  const originalTime = Number(marker.time);
+      marker.raw_time ??= originalTime;
+      const move = (moveEvent) => {
+        const delta = (moveEvent.clientX - originalX) / width * duration;
+        marker.time = Math.max(0, originalTime + delta);
+        line.style.left = `${marker.time / duration * width}px`;
+      };
+      const finish = () => {
+        line.removeEventListener('pointermove', move);
+        line.removeEventListener('pointerup', finish);
+        line.removeEventListener('pointercancel', finish);
+        state.score.beat_taps = markers.map((item) => Number(item.raw_time ?? item.time));
+        renderTapReadout();
+      };
+      line.addEventListener('pointermove', move);
+      line.addEventListener('pointerup', finish, { once: true });
+      line.addEventListener('pointercancel', finish, { once: true });
+    });
+    line.addEventListener('dblclick', (event) => {
+      event.preventDefault(); event.stopPropagation();
+      const index = markers.indexOf(marker);
+      markers.splice(index, 1);
+      state.score.beat_taps = markers.map((item) => Number(item.raw_time ?? item.time));
+      renderTapReadout(); renderSpectrogram();
+    });
+    beatLayer.appendChild(line);
+  });
+}
+
+function parseMeterSequence() {
+  const values = ($('#meterSequence')?.value || '4').split(/[,+\s]+/).map(Number).filter((n) => Number.isInteger(n) && n >= 1 && n <= 32);
+  return values.length ? values : [4];
+}
+
+function recordBeatTap(numberedBeat = null) {
   if (!state.project || !state.score) return;
   const player = $('#audioPlayer');
-  if (player.paused) return showToast('请先播放音频，再按空格或点击“打拍”记录拍点。');
   const current = Number(player.currentTime.toFixed(4));
   const taps = state.score.beat_taps || (state.score.beat_taps = []);
   if (taps.length && current - taps[taps.length - 1] < .2) return;
   taps.push(current);
+  const markers = state.score.beat_markers || (state.score.beat_markers = []);
+  const sequence = parseMeterSequence();
+  let bar = markers.length ? markers[markers.length - 1].bar : 1;
+  let beat = markers.length ? markers[markers.length - 1].beat + 1 : 1;
+  if (numberedBeat != null) {
+    beat = numberedBeat;
+    if (numberedBeat === 1 && markers.length) bar += 1;
+    else if (!markers.length) bar = 1;
+    else bar = markers[markers.length - 1].bar;
+  } else if (markers.length && beat > sequence[(bar - 1) % sequence.length]) {
+    bar += 1;
+    beat = 1;
+  }
+  markers.push({ time: current, beat, bar });
+  state.score.meter_sequence = sequence;
+  state.score.time_signature = { ...(state.score.time_signature || {}), value: `${sequence[0]}/4`, sequence };
   renderTapReadout();
+  renderSpectrogram();
+}
+
+function toggleBeatCapture() {
+  state.captureActive = !state.captureActive;
+  $('#tapTempoButton').textContent = state.captureActive ? '结束打拍（Esc）' : '开始打拍';
+  $('#tapTempoButton').classList.toggle('capture-on', state.captureActive);
+  renderTapReadout();
+  if (state.captureActive) showToast('打拍模式已启动；焦点无需停在按钮上，Esc 或按钮可结束。', 'success');
+}
+
+function quantizeAll(kind) {
+  if (!state.score) return;
+  const subdivision = $('#rhythmQuantize').value;
+  if (subdivision === 'off') return showToast('请先选择 1/8、1/16 或 1/32 量化网格。');
+  const beatSeconds = 60 / Math.max(30, Math.min(300, Number(state.score.tempo_bpm) || 100));
+  const grid = beatSeconds * 16 / Number(subdivision);
+  const anchor = state.score.beat_markers?.find((marker) => marker.beat === 1)?.time ?? 0;
+  if (kind === 'beats') {
+    state.score.beat_markers = (state.score.beat_markers || []).map((marker) => ({ ...marker, raw_time: marker.raw_time ?? marker.time, time: Math.max(0, anchor + Math.round((marker.time - anchor) / grid) * grid) }));
+    state.score.beat_taps = state.score.beat_markers.map((marker) => Number(marker.raw_time ?? marker.time));
+  } else {
+    state.score.notes.forEach((note) => {
+      note.onset = Math.max(0, anchor + Math.round((note.onset - anchor) / grid) * grid);
+      note.offset = Math.max(note.onset + grid, anchor + Math.round((note.offset - anchor) / grid) * grid);
+      note.duration = note.offset - note.onset;
+      note.user_edited = true;
+    });
+  }
+  state.score.rhythm_quantize = Number(subdivision);
+  renderSpectrogram(); renderNotesTable(); renderNotation();
+  showToast(`${kind === 'beats' ? '拍点' : '音符'}已吸附到 1/${subdivision} 网格；请保存修订。`, 'success');
+}
+
+function setZoom(axis, value) {
+  const scroll = $('#spectrogramScroll');
+  const oldLeft = scroll.scrollLeft;
+  const oldWidth = $('#spectrogramCanvas').clientWidth || 1;
+  if (axis === 'time') state.timeZoom = Math.max(1, Math.min(8, Number(value)));
+  else state.pitchZoom = Math.max(1, Math.min(3, Number(value)));
+  renderSpectrogram();
+  $('#timeZoom').value = state.timeZoom;
+  $('#pitchZoom').value = state.pitchZoom;
+  if (axis === 'time') {
+    const ratio = scroll.clientWidth ? (oldLeft + scroll.clientWidth / 2) / oldWidth : 0;
+    scroll.scrollLeft = Math.max(0, ratio * $('#spectrogramCanvas').clientWidth - scroll.clientWidth / 2);
+  }
+}
+
+function bindCanvasNavigation() {
+  const scroll = $('#spectrogramScroll');
+  scroll.addEventListener('wheel', (event) => {
+    if (event.ctrlKey || event.metaKey) return;
+    event.preventDefault();
+    const control = event.shiftKey ? $('#pitchZoom') : $('#timeZoom');
+    setZoom(event.shiftKey ? 'pitch' : 'time', Number(control.value) + (event.deltaY < 0 ? .25 : -.25));
+  }, { passive: false });
+  scroll.addEventListener('pointerdown', (event) => {
+    if (event.target.closest('.spectrogram-note') || event.target.closest('.beat-marker')) return;
+    state.panDrag = { x: event.clientX, y: event.clientY, left: scroll.scrollLeft, top: scroll.scrollTop };
+    scroll.setPointerCapture(event.pointerId);
+  });
+  scroll.addEventListener('click', (event) => {
+    if (event.detail !== 1 || event.target.closest('.spectrogram-note') || event.target.closest('.beat-marker')) return;
+    const rect = $('#spectrogramCanvas').getBoundingClientRect();
+    const duration = Number(state.score?.input?.duration_seconds) || 1;
+    $('#audioPlayer').currentTime = Math.max(0, Math.min(duration, (event.clientX - rect.left) / rect.width * duration));
+  });
+  scroll.addEventListener('pointermove', (event) => {
+    if (!state.panDrag) return;
+    scroll.scrollLeft = state.panDrag.left - (event.clientX - state.panDrag.x);
+    scroll.scrollTop = state.panDrag.top - (event.clientY - state.panDrag.y);
+  });
+  ['pointerup', 'pointercancel'].forEach((name) => scroll.addEventListener(name, () => { state.panDrag = null; }));
+  $('#spectrogramCanvas').addEventListener('dblclick', (event) => {
+    const rect = $('#spectrogramCanvas').getBoundingClientRect();
+    const duration = Number(state.score?.input?.duration_seconds) || 1;
+    $('#audioPlayer').currentTime = Math.max(0, Math.min(duration, (event.clientX - rect.left) / rect.width * duration));
+  });
+}
+
+function handleEditorKeydown(event) {
+  const target = event.target;
+  const editing = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || (target instanceof HTMLSelectElement && target.id !== 'beatMode') || target?.isContentEditable;
+  if (editing) return;
+  if (state.captureActive && event.code === 'Escape') {
+    event.preventDefault();
+    state.captureActive = false;
+    $('#tapTempoButton').textContent = '开始打拍';
+    $('#tapTempoButton').classList.remove('capture-on');
+    renderTapReadout();
+    return;
+  }
+  if (state.captureActive && event.code === 'Space' && $('#beatMode').value === 'space') {
+    event.preventDefault(); event.stopPropagation(); recordBeatTap(); return;
+  }
+  if (state.captureActive && $('#beatMode').value === 'digits' && /^[1-9]$/.test(event.key)) {
+    event.preventDefault(); event.stopPropagation(); recordBeatTap(Number(event.key)); return;
+  }
+  if (state.selectedNote == null || !state.score) return;
+  const note = state.score.notes[state.selectedNote];
+  if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+    event.preventDefault(); note.midi = constrainMidi(Math.max(36, Math.min(84, note.midi + (event.key === 'ArrowUp' ? 1 : -1))));
+    note.name = midiLabel(note.midi); note.user_edited = true; previewMidi(note.midi, .2);
+  } else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+    event.preventDefault();
+    const step = event.shiftKey ? .1 : .02;
+    const delta = (event.key === 'ArrowRight' ? 1 : -1) * step;
+    note.onset = Math.max(0, note.onset + delta); note.offset = Math.max(note.onset + .03, note.offset + delta); note.duration = note.offset - note.onset; note.user_edited = true;
+  } else if (event.key.toLowerCase() === 'd') {
+    state.score.notes.splice(state.selectedNote, 1); state.selectedNote = null;
+  } else return;
+  renderSpectrogram(); renderNotation(); renderNotesTable();
 }
 
 function renderNotesTable() {
@@ -293,8 +562,8 @@ function renderScoreContext() {
   $('#scoreContext').innerHTML = [
     `引擎：${score.engine.name}`,
     settingsLabel,
-    `拍号：${score.time_signature?.value || '4/4'}（候选）`,
-    `调性：${score.key?.label || '未确定'}（候选）`,
+    `拍号：${score.meter_sequence?.length ? score.meter_sequence.join('+') + '/4（用户标记）' : (score.time_signature?.value || '4/4（默认候选）')}`,
+    `调性：${score.key?.label || '未指定'}${score.key?.status === 'user_set' ? '（用户设定）' : '（算法候选）'}`,
     score.engine.audio_sent_to_cloud ? '音频已外发' : '原始音频未外发',
   ].filter(Boolean).map((text) => `<span>${escapeHtml(text)}</span>`).join('');
   const engineLabel = score.engine.name === 'basic-pitch'
@@ -303,6 +572,23 @@ function renderScoreContext() {
       ? 'ROSVOT + RMVPE 歌声转谱'
       : 'pYIN 本地回退引擎';
   $('#statusStrip').textContent = `${engineLabel} 已生成可编辑候选谱。${score.disclaimer || ''}`;
+}
+
+function initialiseMusicControls() {
+  const keySelect = $('#keySelect');
+  if (!keySelect.options.length) {
+    keySelect.innerHTML = '<option value="">自动/不指定</option>' + ['C','C#','D','Eb','E','F','F#','G','Ab','A','Bb','B'].map((key) => `<option value="${key}">${key}</option>`).join('');
+  }
+  const key = state.score.key || {};
+  keySelect.value = key.tonic || '';
+  $('#keyMode').value = key.mode || 'major';
+  $('#keySelect').dataset.initialKey = keySelect.value;
+  $('#keyMode').dataset.initialMode = $('#keyMode').value;
+  const sequence = state.score.meter_sequence || state.score.time_signature?.sequence || [4];
+  $('#meterSequence').value = sequence.join(',');
+  $('#rhythmQuantize').value = String(state.score.rhythm_quantize ?? 16);
+  $('#rhythmQuantize').dataset.initialValue = $('#rhythmQuantize').value;
+  renderTapReadout();
 }
 
 async function refreshRosvotStatus() {
@@ -368,6 +654,7 @@ function renderProject(data) {
   renderNotation();
   renderNotesTable();
   renderQuality();
+  initialiseMusicControls();
   bindExports();
   loadSpectrogram();
   loadRecentProjects();
@@ -492,6 +779,14 @@ async function uploadAudio(event) {
 
 async function saveProject() {
   if (!state.project || !state.score) return;
+  const sequence = parseMeterSequence();
+  state.score.meter_sequence = sequence;
+  state.score.time_signature = { ...(state.score.time_signature || {}), value: `${sequence[0]}/4`, sequence, status: 'user_set' };
+  const tonic = $('#keySelect').value;
+  if (tonic) state.score.key = { ...(state.score.key || {}), tonic, mode: $('#keyMode').value, label: `${tonic} ${$('#keyMode').value}`, status: 'user_set' };
+  else if (state.score.key) state.score.key.status = 'auto_suggestion';
+  state.score.rhythm_quantize = $('#rhythmQuantize').value === 'off' ? 'off' : Number($('#rhythmQuantize').value);
+  state.score.pitch_quantize = $('#strictKey').checked ? 'key_strict' : (state.score.pitch_quantize || 'semitone');
   const button = $('#saveButton');
   button.disabled = true;
   button.textContent = '保存中…';
@@ -657,6 +952,30 @@ function bindUI() {
     $(selector).addEventListener('input', markCustomPreset);
   });
   $('#saveButton').addEventListener('click', saveProject);
+  bindCanvasNavigation();
+  $('#timeZoom').addEventListener('input', (event) => setZoom('time', event.target.value));
+  $('#pitchZoom').addEventListener('input', (event) => setZoom('pitch', event.target.value));
+  $('#timeZoomIn').addEventListener('click', () => setZoom('time', Number($('#timeZoom').value) + .5));
+  $('#timeZoomOut').addEventListener('click', () => setZoom('time', Number($('#timeZoom').value) - .5));
+  $('#pitchZoomIn').addEventListener('click', () => setZoom('pitch', Number($('#pitchZoom').value) + .25));
+  $('#pitchZoomOut').addEventListener('click', () => setZoom('pitch', Number($('#pitchZoom').value) - .25));
+  $('#fitTimeline').addEventListener('click', () => { state.timeZoom = 1; state.pitchZoom = 1; setZoom('time', 1); setZoom('pitch', 1); $('#spectrogramScroll').scrollLeft = 0; $('#spectrogramScroll').scrollTop = 0; });
+  $('#tapTempoButton').addEventListener('click', toggleBeatCapture);
+  $('#beatMode').addEventListener('change', (event) => {
+    $('#tapTempoButton').textContent = state.captureActive ? '结束打拍（Esc）' : (event.target.value === 'digits' ? '开始数字拍号模式' : '开始打拍（空格）');
+  });
+  $('#meterSequence').addEventListener('change', () => { state.score.meter_sequence = parseMeterSequence(); renderSpectrogram(); });
+  $('#quantizeBeats').addEventListener('click', () => quantizeAll('beats'));
+  $('#quantizeNotes').addEventListener('click', () => quantizeAll('notes'));
+  $('#keySelect').addEventListener('change', () => {
+    if (!state.score) return;
+    if (!$('#keySelect').value) state.score.key = { ...(state.score.key || {}), tonic: null, status: 'auto_suggestion' };
+    else state.score.key = { ...(state.score.key || {}), tonic: $('#keySelect').value, mode: $('#keyMode').value, label: `${$('#keySelect').value} ${$('#keyMode').value}`, status: 'user_set' };
+    renderNotation(); renderSpectrogram(); renderScoreContext();
+  });
+  $('#keyMode').addEventListener('change', () => {
+    if (state.score?.key) { state.score.key.mode = $('#keyMode').value; state.score.key.status = 'user_set'; state.score.key.label = `${state.score.key.tonic || 'Auto'} ${$('#keyMode').value}`; renderNotation(); renderSpectrogram(); renderScoreContext(); }
+  });
   $('#audioPlayer').addEventListener('timeupdate', () => {
     if (!state.score) return;
     const duration = Math.max(.15, Number(state.score.input.duration_seconds) || state.audioDuration || 1);
@@ -664,22 +983,20 @@ function bindUI() {
     playhead.style.display = 'block';
     playhead.style.left = `${$('#spectrogramCanvas').clientWidth * ($('#audioPlayer').currentTime / duration)}px`;
   });
-  $('#tapTempoButton').addEventListener('click', recordBeatTap);
+  $('#audioPlayer').addEventListener('loadedmetadata', () => {
+    state.audioDuration = Number($('#audioPlayer').duration) || state.audioDuration;
+    renderSpectrogram();
+  });
   $('#clearTapsButton').addEventListener('click', () => {
     if (!state.score) return;
     state.score.beat_taps = [];
+    state.score.beat_markers = [];
     state.score.tempo_mode = 'estimated';
     renderTapReadout();
+    renderSpectrogram();
     showToast('打拍记录已清空；保存修订后生效。');
   });
-  document.addEventListener('keydown', (event) => {
-    const target = event.target;
-    const editing = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement || target?.isContentEditable;
-    if (event.code === 'Space' && !editing && state.project) {
-      event.preventDefault();
-      recordBeatTap();
-    }
-  });
+  document.addEventListener('keydown', handleEditorKeydown, true);
   $('#exportButton').addEventListener('click', () => $('#exportPopover').classList.toggle('hidden'));
   $('#aiReviewButton').addEventListener('click', () => {
     document.querySelector('.ai-panel')?.scrollIntoView({ behavior: 'smooth', block: 'center' });

@@ -4,15 +4,15 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#0f1d3a" />
-  <title>HearPitch Local · V261003A</title>
-  <link rel="stylesheet" href="/static/styles.css?v=V261003A-A" />
+  <title>HearPitch Local · V261003B</title>
+  <link rel="stylesheet" href="/static/styles.css?v=V261003B" />
 </head>
 <body>
   <div class="app-shell">
     <header class="topbar">
       <div class="brand">
         <div class="brand-mark" aria-hidden="true">♫</div>
-          <div><strong>HearPitch Local</strong><span>V261003A · 声谱图校正工作台</span></div>
+          <div><strong>HearPitch Local</strong><span>V261003B · 声谱图 + 钢琴卷帘工作台</span></div>
       </div>
       <div class="topbar-actions">
         <span class="local-badge">本机处理 · 不上传音频</span>
@@ -93,7 +93,6 @@
             <p id="projectMeta">正在加载…</p>
           </div>
           <div class="workspace-actions">
-            <button class="secondary-button" id="saveButton">保存修订</button>
             <button class="secondary-button" id="aiReviewButton">AI 校对建议</button>
             <div class="export-menu">
               <button class="primary-button small" id="exportButton">导出 <span>↓</span></button>
@@ -110,11 +109,20 @@
         <div class="metrics" id="metrics"></div>
 
         <section class="panel spectrogram-panel">
-          <div class="panel-heading"><div><p class="eyebrow">SPECTROGRAM EDITOR</p><h3>声谱图与音符校正</h3></div><div class="spectrogram-actions"><button class="secondary-button" id="tapTempoButton" type="button">打拍（空格）</button><button class="secondary-button" id="clearTapsButton" type="button">清空打拍</button></div></div>
-          <p class="spectrogram-help">声谱图在本机生成。拖动音符块左右边缘可改起止时间，拖动中部上下可改音高；按空格记录拍点（播放时按拍）。</p>
-          <div class="tap-readout" id="tapReadout">尚未打拍 · 播放音频后按空格，或点击“打拍”</div>
-          <div class="spectrogram-scroll" id="spectrogramScroll"><div class="spectrogram-canvas" id="spectrogramCanvas"><img id="spectrogramImage" alt="音频声谱图" /><div class="spectrogram-grid" id="spectrogramGrid"></div><div class="spectrogram-notes" id="spectrogramNotes"></div><div class="spectrogram-playhead" id="spectrogramPlayhead"></div></div></div>
-          <div class="spectrogram-scale"><span>高音</span><span>音名 / 音高</span><span>低音</span></div>
+          <div class="panel-heading"><div><p class="eyebrow">SPECTROGRAM + PIANO ROLL</p><h3>声谱图与钢琴卷帘校正</h3></div><div class="spectrogram-actions"><button class="secondary-button" id="saveButton">保存修订</button></div></div>
+          <div class="editor-toolbar">
+            <div class="toolbar-group"><button class="secondary-button" id="tapTempoButton" type="button">开始打拍</button><select id="beatMode" aria-label="打拍模式"><option value="space">空格：连续拍点</option><option value="digits">数字键：小节拍号</option></select><button class="secondary-button" id="clearTapsButton" type="button">清空拍点</button></div>
+            <div class="toolbar-group"><label>时间缩放 <button type="button" id="timeZoomOut">−</button><input id="timeZoom" type="range" min="1" max="8" step="0.25" value="1"><button type="button" id="timeZoomIn">＋</button></label><button type="button" id="fitTimeline">适合整段</button><label>音高缩放 <button type="button" id="pitchZoomOut">−</button><input id="pitchZoom" type="range" min="1" max="3" step="0.25" value="1"><button type="button" id="pitchZoomIn">＋</button></label></div>
+          </div>
+          <div class="editor-toolbar secondary-toolbar">
+            <div class="toolbar-group"><label>拍号序列（每小节拍数）<input id="meterSequence" value="4" placeholder="4,2 表示 4/4 + 2/4"></label><label>节奏量化<select id="rhythmQuantize"><option value="off">关闭</option><option value="8">1/8</option><option value="16" selected>1/16</option><option value="32">1/32</option></select></label><button class="secondary-button" id="quantizeBeats" type="button">量化拍点</button><button class="secondary-button" id="quantizeNotes" type="button">量化音符</button></div>
+            <div class="toolbar-group"><label>调性<select id="keySelect"></select></label><label>模式<select id="keyMode"><option value="major">大调</option><option value="minor">小调</option></select></label><label class="check-label"><input id="strictKey" type="checkbox">音高编辑吸附到调内音</label></div>
+          </div>
+          <p class="spectrogram-help">点击“开始打拍”后进入持续捕获模式：空格记录连续拍点；数字键 1–9 标记拍号，按 1 开始新小节；Esc 或再次点击结束。点击音符试听合成音；拖动移动/改音高，拖边缘改时值；方向键可微调。滚轮缩放时间，Shift+滚轮缩放音高，按住空白处拖动平移。</p>
+          <div class="tap-readout" id="tapReadout">未进入打拍模式。拍点和小节线会直接显示在声谱图上。</div>
+          <div class="spectrogram-scroll" id="spectrogramScroll"><div class="spectrogram-canvas" id="spectrogramCanvas"><img id="spectrogramImage" alt="本机生成的音频声谱图" /><div class="spectrogram-grid" id="spectrogramGrid"></div><div class="spectrogram-beats" id="spectrogramBeats"></div><div class="spectrogram-notes" id="spectrogramNotes"></div><div class="spectrogram-playhead" id="spectrogramPlayhead"></div></div></div>
+          <div class="spectrogram-scale"><span>MIDI 84 高音</span><span id="canvasSelection">点击音符试听 · ↑↓ 改音高 · ←→ 微调时间</span><span>MIDI 36 低音</span></div>
+          <audio id="audioPlayer" controls></audio>
         </section>
 
         <div class="workspace-grid">
@@ -125,10 +133,7 @@
             </div>
             <div class="score-context" id="scoreContext"></div>
             <div class="notation-wrap"><div class="notation" id="notation"></div></div>
-            <div class="audio-controls">
-              <audio id="audioPlayer" controls></audio>
-              <p>原音保留在本机项目目录。编辑音符时请回听确认；低置信度音符以橙色强调。</p>
-            </div>
+            <div class="audio-controls"><p>原音保留在本机。声谱图上的音符支持合成音预览与直接校正；橙色音符代表低置信度候选。</p></div>
           </section>
 
           <aside class="side-stack">
@@ -148,11 +153,7 @@
           </aside>
         </div>
 
-        <section class="panel editor-panel">
-          <div class="panel-heading"><div><p class="eyebrow">EDIT EVENTS</p><h3>音符编辑</h3></div><p>改动后点击“保存修订”重新生成导出文件。</p></div>
-          <div class="table-wrap"><table><thead><tr><th>#</th><th>起点 (s)</th><th>终点 (s)</th><th>MIDI</th><th>音名</th><th>简谱</th><th>置信度</th><th>操作</th></tr></thead><tbody id="notesTable"></tbody></table></div>
-          <button class="add-note" id="addNoteButton">+ 新增音符</button>
-        </section>
+        <details class="panel editor-panel advanced-editor"><summary>高级精确编辑（音符数值表）</summary><div class="table-wrap"><table><thead><tr><th>#</th><th>起点 (s)</th><th>终点 (s)</th><th>MIDI</th><th>音名</th><th>简谱</th><th>置信度</th><th>操作</th></tr></thead><tbody id="notesTable"></tbody></table></div><button class="add-note" id="addNoteButton">+ 新增音符</button></details>
       </section>
 
       <section class="empty-state" id="emptyState">
@@ -180,6 +181,6 @@
   </dialog>
 
   <div class="toast hidden" id="toast"></div>
-  <script src="/static/app.js?v=V261003A-A"></script>
+  <script src="/static/app.js?v=V261003B"></script>
 </body>
 </html>

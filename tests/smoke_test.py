@@ -33,10 +33,24 @@ def main() -> None:
         assert image.format == "PNG" and image.width >= 240 and image.height == 48 * 12
     loaded["score"]["notes"][0]["midi"] += 1
     loaded["score"]["beat_taps"] = [0.1, 0.7, 1.3]
+    loaded["score"]["beat_markers"] = [
+        {"time": 0.1, "raw_time": 0.11, "beat": 1, "bar": 1},
+        {"time": 0.7, "raw_time": 0.71, "beat": 2, "bar": 1},
+        {"time": 1.3, "raw_time": 1.31, "beat": 1, "bar": 2},
+    ]
+    loaded["score"]["meter_sequence"] = [2, 3]
+    loaded["score"]["time_signature"] = {"value": "2/4", "sequence": [2, 3]}
+    loaded["score"]["rhythm_quantize"] = 16
+    loaded["score"]["pitch_quantize"] = "key_strict"
     loaded["score"]["tempo_mode"] = "tap"
     updated = update_project_score(result["project"]["id"], loaded["score"])
     assert updated["score"]["notes"][0]["user_edited"] is True
     assert updated["score"]["beat_taps"] == [0.1, 0.7, 1.3]
+    assert updated["score"]["beat_markers"][0]["raw_time"] == 0.11
+    assert updated["score"]["meter_sequence"] == [2, 3]
+    assert updated["score"]["rhythm_quantize"] == 16
+    assert updated["score"]["pitch_quantize"] == "key_strict"
+    assert "<beats>2</beats>" in Path(updated["project"]["exports"]["musicxml"]).read_text(encoding="utf-8")
     invalid = {**updated["score"], "beat_taps": [-1.0]}
     try:
         update_project_score(result["project"]["id"], invalid)

@@ -1,5 +1,6 @@
 HearPitch Local
-Version: V261003A
-Release: Spectrogram editor — local spectrogram display, editable note overlays, playback cursor, tap-tempo capture, and score export updates.
+Version: V261003B
+Release: Piano-roll workbench — combined zoomable spectrogram, editable note blocks, synth preview, beat capture, mixed-meter markers, and rhythm quantization.
+Subtitle: Piano-roll workbench
 Release type: Windows local-first Python MVP
 Audio privacy: Local processing by default; optional AI review sends structured score events only, never original audio.

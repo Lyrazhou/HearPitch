@@ -37,7 +37,7 @@ python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 
 echo.
-echo [HearPitch V261003A] Starting local interface at http://127.0.0.1:8765
+echo [HearPitch V261003B] Starting local interface at http://127.0.0.1:8765
 start "" /b cmd /c "timeout /t 2 /nobreak >nul & start http://127.0.0.1:8765"
 python hearpitch_cli.py serve --host 127.0.0.1 --port 8765
 pause
