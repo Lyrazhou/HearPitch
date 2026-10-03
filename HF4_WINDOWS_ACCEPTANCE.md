@@ -5,7 +5,7 @@ This checklist is for the first run on the user's own NVIDIA Windows PC. The Lin
 ## Before installation
 
 - Run `nvidia-smi` and confirm the NVIDIA GPU and driver are shown.
-- Run `py -3.9-64 -c "import sys; print(sys.version); print(sys.executable)"` and confirm Python 3.9 x64.
+- Run `py -0p` and confirm Python 3.9, 3.10 or 3.11 x64 is installed. The installer prefers 3.9, then 3.10, then 3.11.
 - Close the HearPitch service before installing the optional model.
 - Ensure several GB of free space; model ZIP itself is 584,407,709 bytes.
 

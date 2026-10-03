@@ -4,7 +4,7 @@ cd /d "%~dp0"
 
 echo ============================================================
 echo HearPitch Local - Optional ROSVOT + RMVPE CUDA setup
-echo This creates an isolated Python 3.9 environment and downloads
+echo This creates an isolated Python 3.9/3.10/3.11 environment and downloads
 echo model weights separately. It does not modify HearPitch .venv.
 echo The checkpoint archive is approximately 557 MiB.
 echo ============================================================

@@ -11,7 +11,7 @@ The model checkpoint is trained with M4Singer. Expect domain differences between
 - Windows 10/11, 64-bit.
 - NVIDIA GPU, installed NVIDIA driver, and `nvidia-smi` working.
 - Existing HearPitch HF3 package, installed and run once.
-- Python **3.9 x64** installed and visible as `py -3.9`; the main HearPitch Python environment is not changed.
+- Python **3.9, 3.10 or 3.11 x64** installed. The installer prefers 3.9, then 3.10, then 3.11; the main HearPitch Python environment is not changed.
 - Internet access for the first installation.
 - About 5 GB free disk space is recommended. The official checkpoint archive is about 557 MiB; PyTorch CUDA wheels and its separate environment require additional space.
 
@@ -20,10 +20,11 @@ The installer uses PyTorch 2.1.1 + CUDA 11.8 wheels. You generally need a compat
 ## Install
 
 1. Start HearPitch with `start_windows.bat` once, then close its command window.
-2. Confirm Python 3.9 x64 is installed:
+2. Confirm a compatible Python is installed. Python 3.9 is preferred, but 3.10/3.11 also work:
 
    ```powershell
-   py -3.9 -c "import sys; print(sys.version); print(sys.executable)"
+   py -0p
+   py -3.11 -c "import sys; print(sys.version); print(sys.executable)"
    nvidia-smi
    ```
 
@@ -56,7 +57,7 @@ python hearpitch_cli.py transcribe "C:\Music\vocal.wav" --engine rosvot-rmvpe --
 ## Troubleshooting
 
 - **No CUDA / `torch.cuda.is_available()` is false:** update NVIDIA drivers, restart Windows, and re-run the installer. Do not install a different Torch into HearPitch's main `.venv`.
-- **Python 3.9 not found:** install Python 3.9 x64 and Python Launcher; the main application may continue using Python 3.11.
+- **No compatible Python found:** install Python 3.9, 3.10 or 3.11 x64 and Python Launcher. The installer automatically chooses the first available version in that order; the main application environment is never replaced.
 - **Out of memory:** test a shorter audio file and close other GPU-intensive applications.
 - **Missing model/config file:** run the installer again; inspect `Documents\HearPitchLocal\models\rosvot\source\checkpoints`.
 - **Accuracy is still not good:** compare clean vocal vs accompanied input and inspect mistakes near note transitions. This is a candidate transcription model, not guaranteed sheet music.
@@ -79,7 +80,7 @@ Audio is processed by ROSVOT locally. The installer fetches code and pretrained 
 
 **Important:** Current implementation calls upstream ROSVOT's CUDA inference entry point through an isolated subprocess. GPU inference cannot be fully validated in this Linux development sandbox; after installation, the first Windows run is the hardware acceptance test.
 
-**Python dependency note:** ROSVOT's upstream Linux instructions specify Python 3.9, PyTorch 2.1.1 and CUDA 11.8. This installer translates that into Windows x64 wheels and uses `pyworld` 0.3.4 because 0.2.12 does not publish a CPython 3.9 Windows wheel. This compatibility substitution must be included in local regression testing.
+**Python dependency note:** ROSVOT's upstream Linux instructions specify Python 3.9, PyTorch 2.1.1 and CUDA 11.8. This installer prefers Python 3.9 but also supports 3.10/3.11 because many Windows installations do not include 3.9. It uses `pyworld` 0.3.4 because 0.2.12 does not publish a CPython 3.9 Windows wheel. This compatibility substitution must be included in local regression testing.
 
 **ROSVOT result confidence:** The upstream inference output is MIDI/note events, not calibrated note confidence. HearPitch keeps confidence unset for this engine.
 

@@ -132,16 +132,57 @@ def extract_securely(archive: zipfile.ZipFile, destination: Path):
                 shutil.copyfileobj(src, dst)
 
 
+def probe_python(command: list[str]) -> tuple[str, tuple[int, int, int]] | None:
+    try:
+        probe = subprocess.run(
+            command + ["-c", "import sys; print(sys.executable); print('.'.join(map(str, sys.version_info[:3])))"],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+    except OSError:
+        return None
+    if probe.returncode:
+        return None
+    lines = [line.strip() for line in probe.stdout.splitlines() if line.strip()]
+    if len(lines) < 2:
+        return None
+    try:
+        version = tuple(int(part) for part in lines[-1].split("."))
+    except ValueError:
+        return None
+    if version < (3, 9, 0) or version >= (3, 12, 0):
+        return None
+    return lines[-2], version
+
+
+def select_base_python() -> tuple[str, tuple[int, int, int], str]:
+    """Prefer the upstream Python 3.9, but support the common 3.10/3.11 installs."""
+    launcher = shutil.which("py")
+    if launcher:
+        for tag in ("-3.9-64", "-3.9", "-3.10-64", "-3.10", "-3.11-64", "-3.11"):
+            result = probe_python([launcher, tag])
+            if result:
+                path, version = result
+                return path, version, f"Windows Python Launcher {tag}"
+    current = probe_python([sys.executable])
+    if current:
+        path, version = current
+        return path, version, "当前 HearPitch Python"
+    raise SystemExit(
+        "找不到兼容的 64 位 Python。请安装 Python 3.9、3.10 或 3.11 x64，"
+        "并勾选 Python Launcher，然后重新运行本脚本。"
+    )
+
+
 def main():
     if os.name != "nt":
         raise SystemExit("此安装器只支持 Windows。")
-    launcher = shutil.which("py")
-    if not launcher:
-        raise SystemExit("找不到 Windows Python Launcher `py`。请安装 Python 3.9 x64，并勾选 Python Launcher。")
-    probe = subprocess.run([launcher, "-3.9-64", "-c", "import sys;print(sys.executable)"], text=True, capture_output=True)
-    if probe.returncode:
-        raise SystemExit("找不到 Python 3.9 x64。请安装 Python 3.9 x64 后重新运行本脚本。ROSVOT 使用独立 Python 3.9 环境，不改动 HearPitch 主环境。")
-    base_python = probe.stdout.strip().splitlines()[-1]
+    base_python, python_version, python_source = select_base_python()
+    print(
+        f"[HearPitch ROSVOT] 使用 {python_source}: Python {'.'.join(map(str, python_version))}（独立环境）",
+        flush=True,
+    )
     if VENV.exists() and not PYTHON.exists():
         raise SystemExit(f"检测到不完整的 ROSVOT 环境：{VENV}。请删除该 .venv 文件夹后重试。")
     if PYTHON.exists() and SOURCE.exists():
@@ -157,12 +198,12 @@ def main():
     temp = Path(tempfile.mkdtemp(prefix="hearpitch-rosvot-install-", dir=ROOT))
     try:
         if not PYTHON.exists():
-            run([launcher, "-3.9-64", "-m", "venv", VENV])
+            run([base_python, "-m", "venv", VENV])
         print("[HearPitch ROSVOT] 安装 PyTorch 2.1.1 + CUDA 11.8（Windows x64）…", flush=True)
         run([PYTHON, "-m", "pip", "install", "--upgrade", "pip", "setuptools", "wheel"])
         run([PYTHON, "-m", "pip", "install", "torch==2.1.1+cu118", "torchaudio==2.1.1+cu118", "--index-url", "https://download.pytorch.org/whl/cu118"])
         packages = [
-            "numpy<2", "scipy", "librosa==0.10.1", "tqdm", "matplotlib==3.5.3",
+            "numpy<2", "scipy", "librosa==0.10.1", "tqdm", "matplotlib>=3.7,<3.9",
             "PyYAML", "pretty_midi", "pyworld==0.3.4", "pyloudnorm",
             "six", "packaging", "soundfile", "numba<0.60",
         ]
