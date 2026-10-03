@@ -10,7 +10,8 @@ sys.path.insert(0, str(ROOT))
 os.environ["HEARPITCH_HOME"] = str(Path(__file__).parent / ".rosvot-test-data")
 
 import mido
-from hearpitch_core.rosvot_engine import midi_to_score_notes, rosvot_model_status
+from hearpitch_core.rosvot_engine import midi_to_score_notes, rosvot_model_status, transcribe_with_rosvot
+from hearpitch_core import rosvot_engine
 from hearpitch_core import transcription
 from hearpitch_core.transcription import (
     TranscriptionError,
@@ -48,6 +49,58 @@ def midi_with_tempo_changes(path: Path):
 
 
 def main():
+    # Failure reporting must surface the real child return code and log tail,
+    # not mask the inference failure with an unrelated NameError.
+    original_status = rosvot_engine.rosvot_model_status
+    original_temp = rosvot_engine.tempfile.mkdtemp
+    original_popen = rosvot_engine.subprocess.Popen
+    original_sleep = rosvot_engine.time.sleep
+    class FailedProcess:
+        returncode = 7
+        def __init__(self, *args, **kwargs):
+            self.stdout = kwargs.get("stdout")
+            self.stdout.write("synthetic model failure\n")
+            self.stdout.flush()
+        def poll(self):
+            return self.returncode
+    with tempfile.TemporaryDirectory() as folder:
+        root = Path(folder)
+        work_root = root / "work"
+        work_root.mkdir()
+        (work_root / "job").mkdir()
+        source = root / "source"
+        source.mkdir()
+        audio = root / "audio.wav"
+        import soundfile as sf
+        import numpy as np
+        sf.write(audio, np.zeros(24_000, dtype=np.float32), 24_000)
+        rosvot_engine.rosvot_model_status = lambda: {
+            "installed": True,
+            "cuda_available": True,
+            "python": str(root / "python.exe"),
+            "source": str(source),
+        }
+        rosvot_engine.tempfile.mkdtemp = lambda **kwargs: str(work_root / "job")
+        rosvot_engine.subprocess.Popen = FailedProcess
+        rosvot_engine.time.sleep = lambda _seconds: None
+        try:
+            try:
+                transcribe_with_rosvot(
+                    audio,
+                    min_note_duration_ms=80,
+                    merge_gap_ms=50,
+                    sensitivity=40,
+                )
+            except TranscriptionError as exc:
+                assert "代码 7" in str(exc) and "synthetic model failure" in str(exc)
+            else:
+                raise AssertionError("failed ROSVOT subprocess should raise TranscriptionError")
+        finally:
+            rosvot_engine.rosvot_model_status = original_status
+            rosvot_engine.tempfile.mkdtemp = original_temp
+            rosvot_engine.subprocess.Popen = original_popen
+            rosvot_engine.time.sleep = original_sleep
+
     with tempfile.TemporaryDirectory() as folder:
         midi_path = Path(folder) / "output.mid"
         make_midi(midi_path)
@@ -72,7 +125,6 @@ def main():
         import soundfile as sf
         audio = Path(folder) / "solo.wav"
         sf.write(audio, np.zeros(24_000, dtype=np.float32), 24_000)
-        from hearpitch_core import rosvot_engine
         original = rosvot_engine.transcribe_with_rosvot
         rosvot_engine.transcribe_with_rosvot = lambda *args, **kwargs: (notes, "rosvot-rmvpe")
         try:

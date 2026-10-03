@@ -1,5 +1,5 @@
 HearPitch Local
 Version: V260924A
-Release: HF4.2 — pins compatible setuptools (<81) so pyworld can import pkg_resources; installer repairs existing ROSVOT environments without redownloading weights.
+Release: HF4.3 — fixes ROSVOT subprocess failure reporting so the actual inference exit code and log are shown instead of a NameError.
 Release type: Windows local-first Python MVP
 Audio privacy: Local processing by default; optional AI review sends structured score events only, never original audio.

@@ -237,7 +237,7 @@ def transcribe_with_rosvot(
                     raise TranscriptionError("ROSVOT CUDA 显存不足。请尝试缩短音频或关闭其他 GPU 程序。")
                 if "no cuda" in lowered or "cuda is not available" in lowered or "cuda driver" in lowered:
                     raise TranscriptionError("ROSVOT 专用环境无法访问 CUDA。请检查 NVIDIA 驱动和 CUDA 版 PyTorch 安装。")
-                raise TranscriptionError(f"ROSVOT 推理失败（代码 {completed.returncode}）：{tail}")
+                raise TranscriptionError(f"ROSVOT 推理失败（代码 {return_code}）：{tail}")
 
             midi_path = out_dir / "midi" / "output.mid"
             segment_notes = midi_to_score_notes(
