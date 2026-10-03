@@ -161,6 +161,25 @@ td .confidence.low { color: #b56621; }
 .remove-note { background: transparent; color: #af5050; border: 0; font-size: 12px; }
 .add-note { margin-top: 12px; color: var(--blue); background: transparent; border: 1px dashed #a7baf2; border-radius: 8px; padding: 8px 10px; font-weight: 700; font-size: 12px; }
 
+.spectrogram-panel { margin: 0 0 18px; }
+.spectrogram-actions { display: flex; gap: 7px; }
+.spectrogram-help { color: var(--muted); font-size: 12px; line-height: 1.55; margin: -3px 0 10px; }
+.tap-readout { color: #30456f; background: #f2f5fc; border: 1px solid #e2e8f3; padding: 8px 10px; border-radius: 7px; font-size: 12px; margin-bottom: 10px; }
+.spectrogram-scroll { overflow-x: auto; border: 1px solid #263a5a; background: #08152c; border-radius: 9px; }
+.spectrogram-canvas { position: relative; width: 1800px; max-width: none; height: 576px; overflow: hidden; background: #08152c; }
+.spectrogram-canvas img { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: fill; opacity: .95; }
+.spectrogram-grid, .spectrogram-notes { position: absolute; inset: 0; }
+.spectrogram-grid { pointer-events: none; background: repeating-linear-gradient(to bottom, transparent 0, transparent 11px, rgba(215,232,255,.11) 12px), repeating-linear-gradient(to bottom, transparent 0, transparent 143px, rgba(224,238,255,.37) 144px); }
+.spectrogram-notes { pointer-events: none; }
+.spectrogram-note { position: absolute; min-width: 7px; height: 11px; border: 1px solid #fff1a8; background: rgba(255, 185, 65, .78); border-radius: 5px; box-shadow: 0 1px 5px rgba(0,0,0,.35); pointer-events: auto; cursor: grab; touch-action: none; color: #17233c; font-size: 10px; line-height: 9px; white-space: nowrap; padding: 0 3px; }
+.spectrogram-note.selected { border-color: #fff; background: rgba(74, 221, 227, .86); z-index: 2; }
+.spectrogram-note.low { background: rgba(245, 139, 87, .82); }
+.spectrogram-note::before, .spectrogram-note::after { position: absolute; top: -1px; bottom: -1px; width: 5px; content: ''; cursor: ew-resize; }
+.spectrogram-note::before { left: -2px; }
+.spectrogram-note::after { right: -2px; }
+.spectrogram-playhead { position: absolute; z-index: 4; top: 0; bottom: 0; width: 2px; background: #ff4d68; box-shadow: 0 0 5px #ff4d68; pointer-events: none; display: none; }
+.spectrogram-scale { display: flex; justify-content: space-between; color: var(--muted); font-size: 10px; padding: 5px 2px 0; }
+
 .settings-dialog { width: min(560px, calc(100vw - 30px)); padding: 25px; border: 0; border-radius: 15px; box-shadow: 0 25px 80px rgba(13,25,53,.25); }
 .settings-dialog::backdrop { background: rgba(15,29,58,.38); backdrop-filter: blur(3px); }
 .dialog-heading { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }

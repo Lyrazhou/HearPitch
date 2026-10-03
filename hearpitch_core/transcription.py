@@ -725,13 +725,20 @@ def get_project(project_id: str) -> dict[str, Any]:
 def update_project_score(project_id: str, incoming_score: dict[str, Any]) -> dict[str, Any]:
     current = get_project(project_id)
     project_dir = Path(current["project"]["project_dir"])
-    allowed_top_level = {"title", "tempo_bpm", "time_signature", "key", "notes", "user_notes"}
+    allowed_top_level = {"title", "tempo_bpm", "time_signature", "key", "notes", "user_notes", "beat_taps", "tempo_mode"}
     score = current["score"]
     for key in allowed_top_level:
         if key in incoming_score:
             score[key] = incoming_score[key]
     if not isinstance(score.get("notes"), list) or not score["notes"]:
         raise TranscriptionError("谱面至少需要保留一个音符。")
+    if "beat_taps" in score:
+        taps = score["beat_taps"]
+        if not isinstance(taps, list) or any(not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0 for value in taps):
+            raise TranscriptionError("打拍记录格式无效；时间必须是非负数字。")
+        score["beat_taps"] = [round(float(value), 4) for value in taps]
+    if score.get("tempo_mode") not in (None, "estimated", "tap", "manual"):
+        raise TranscriptionError("速度模式无效。")
     for index, note in enumerate(score["notes"], start=1):
         try:
             midi = int(note["midi"])

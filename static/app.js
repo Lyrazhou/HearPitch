@@ -6,6 +6,9 @@ const state = {
   activeJob: null,
   jobStartedAt: null,
   jobTimer: null,
+  audioDuration: 0,
+  spectrogramReady: false,
+  noteDrag: null,
 };
 
 const PRESETS = {
@@ -41,6 +44,11 @@ function formatSeconds(value) {
   const minutes = Math.floor(seconds / 60);
   const rest = (seconds % 60).toFixed(1).padStart(4, '0');
   return minutes ? `${minutes}:${rest}` : `${seconds.toFixed(1)} 秒`;
+}
+
+function midiLabel(midi) {
+  const names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+  return `${names[((midi % 12) + 12) % 12]}${Math.floor(midi / 12) - 1}`;
 }
 
 function keyRoot(key) {
@@ -81,6 +89,7 @@ function updateNoteFromRow(index, field, rawValue) {
   note.user_edited = true;
   renderNotation();
   renderNotesTable();
+  renderSpectrogram();
 }
 
 function renderNotation() {
@@ -109,6 +118,126 @@ function renderNotation() {
   });
 }
 
+function renderSpectrogram() {
+  if (!state.score || !state.spectrogramReady) return;
+  const canvas = $('#spectrogramCanvas');
+  const layer = $('#spectrogramNotes');
+  const duration = Math.max(.15, Number(state.score.input.duration_seconds) || state.audioDuration || 1);
+  const width = canvas.clientWidth || 1800;
+  const height = canvas.clientHeight || 576;
+  layer.innerHTML = '';
+  state.score.notes.forEach((note, index) => {
+    const block = document.createElement('div');
+    block.className = `spectrogram-note ${note.confidence != null && Number(note.confidence) < .45 ? 'low' : ''} ${state.selectedNote === index ? 'selected' : ''}`;
+    block.dataset.noteIndex = index;
+    const left = Math.max(0, Number(note.onset) / duration * width);
+    const right = Math.min(width, Number(note.offset) / duration * width);
+    block.style.left = `${left}px`;
+    block.style.width = `${Math.max(7, right - left)}px`;
+    block.style.top = `${Math.max(0, Math.min(height - 12, (84 - Number(note.midi) - .5) * 12))}px`;
+    block.textContent = midiLabel(Number(note.midi));
+    block.title = `#${index + 1} ${midiLabel(Number(note.midi))} · ${Number(note.onset).toFixed(2)}–${Number(note.offset).toFixed(2)} 秒；拖动编辑`;
+    block.addEventListener('pointerdown', beginNoteDrag);
+    block.addEventListener('click', () => {
+      if (state.noteDrag?.moved) return;
+      state.selectedNote = index;
+      renderSpectrogram(); renderNotation(); renderNotesTable();
+      $('#audioPlayer').currentTime = Math.max(0, Number(note.onset));
+    });
+    layer.appendChild(block);
+  });
+  renderTapReadout();
+}
+
+function beginNoteDrag(event) {
+  event.preventDefault();
+  const element = event.currentTarget;
+  const index = Number(element.dataset.noteIndex);
+  const note = state.score.notes[index];
+  const rect = element.getBoundingClientRect();
+  const localX = event.clientX - rect.left;
+  const mode = localX <= 9 ? 'start' : localX >= rect.width - 9 ? 'end' : 'move';
+  state.selectedNote = index;
+  state.noteDrag = {
+    element, index, mode, startX: event.clientX, startY: event.clientY,
+    onset: Number(note.onset), offset: Number(note.offset), midi: Number(note.midi), moved: false,
+  };
+  element.setPointerCapture(event.pointerId);
+  element.addEventListener('pointermove', moveNoteDrag);
+  element.addEventListener('pointerup', finishNoteDrag, { once: true });
+  element.addEventListener('pointercancel', finishNoteDrag, { once: true });
+}
+
+function moveNoteDrag(event) {
+  const drag = state.noteDrag;
+  if (!drag) return;
+  const dx = event.clientX - drag.startX;
+  const dy = event.clientY - drag.startY;
+  if (Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true;
+  if (!drag.moved) return;
+  const duration = Math.max(.15, Number(state.score.input.duration_seconds) || 1);
+  const width = $('#spectrogramCanvas').clientWidth || 1800;
+  const seconds = dx / width * duration;
+  const semitones = Math.round(-dy / 12);
+  const note = state.score.notes[drag.index];
+  if (drag.mode === 'start') note.onset = Math.max(0, Math.min(drag.offset - .03, drag.onset + seconds));
+  else if (drag.mode === 'end') note.offset = Math.max(drag.onset + .03, drag.offset + seconds);
+  else {
+    const delta = Math.min(Math.max(seconds, -drag.onset), duration - drag.offset);
+    note.onset = drag.onset + delta;
+    note.offset = drag.offset + delta;
+    note.midi = Math.max(36, Math.min(84, drag.midi + semitones));
+  }
+  note.duration = note.offset - note.onset;
+  note.name = midiLabel(note.midi);
+  note.user_edited = true;
+  drag.element.style.left = `${note.onset / duration * width}px`;
+  drag.element.style.width = `${Math.max(7, (note.offset - note.onset) / duration * width)}px`;
+  drag.element.style.top = `${Math.max(0, Math.min(564, (84 - note.midi - .5) * 12))}px`;
+  drag.element.textContent = midiLabel(note.midi);
+}
+
+function finishNoteDrag() {
+  const drag = state.noteDrag;
+  if (!drag) return;
+  drag.element.removeEventListener('pointermove', moveNoteDrag);
+  state.noteDrag = null;
+  if (drag.moved) {
+    renderSpectrogram(); renderNotation(); renderNotesTable();
+    showToast('音符已修改；记得保存修订。', 'success');
+  }
+}
+
+async function loadSpectrogram() {
+  const image = $('#spectrogramImage');
+  state.spectrogramReady = false;
+  image.onload = () => { state.spectrogramReady = true; renderSpectrogram(); };
+  image.onerror = () => showToast('声谱图生成失败；仍可用下方表格编辑音符。', 'error');
+  image.src = `/api/projects/${encodeURIComponent(state.project.id)}/spectrogram?v=${Date.now()}`;
+}
+
+function renderTapReadout() {
+  const taps = state.score?.beat_taps || [];
+  const display = $('#tapReadout');
+  if (!display) return;
+  if (!taps.length) { display.textContent = '尚未打拍 · 播放音频后按空格，或点击“打拍”'; return; }
+  const intervals = taps.slice(1).map((tap, index) => tap - taps[index]).filter((gap) => gap >= .25 && gap <= 2.5);
+  const bpm = intervals.length ? 60 / (intervals.reduce((sum, gap) => sum + gap, 0) / intervals.length) : null;
+  display.textContent = `已记录 ${taps.length} 个拍点${bpm ? ` · 估算 ${bpm.toFixed(1)} BPM` : ' · 至少再打一次以估算 BPM'}`;
+  if (bpm && Number.isFinite(bpm)) { state.score.tempo_bpm = Number(bpm.toFixed(2)); state.score.tempo_mode = 'tap'; }
+}
+
+function recordBeatTap() {
+  if (!state.project || !state.score) return;
+  const player = $('#audioPlayer');
+  if (player.paused) return showToast('请先播放音频，再按空格或点击“打拍”记录拍点。');
+  const current = Number(player.currentTime.toFixed(4));
+  const taps = state.score.beat_taps || (state.score.beat_taps = []);
+  if (taps.length && current - taps[taps.length - 1] < .2) return;
+  taps.push(current);
+  renderTapReadout();
+}
+
 function renderNotesTable() {
   const body = $('#notesTable');
   if (!state.score) return;
@@ -135,6 +264,7 @@ function renderNotesTable() {
     state.selectedNote = null;
     renderNotation();
     renderNotesTable();
+    renderSpectrogram();
   }));
 }
 
@@ -232,12 +362,14 @@ function renderProject(data) {
   $('#projectTitle').textContent = state.score.title;
   $('#projectMeta').textContent = `${state.score.input.original_filename} · ${state.project.id} · ${state.score.engine.mode}`;
   $('#audioPlayer').src = `/api/projects/${encodeURIComponent(state.project.id)}/audio`;
+  state.audioDuration = Number(state.score.input.duration_seconds) || 0;
   renderScoreContext();
   renderMetrics();
   renderNotation();
   renderNotesTable();
   renderQuality();
   bindExports();
+  loadSpectrogram();
   loadRecentProjects();
   $('#workspace').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
@@ -367,7 +499,9 @@ async function saveProject() {
     const result = await request(`/api/projects/${encodeURIComponent(state.project.id)}`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ score: state.score }),
     });
+    const spectrogramWasReady = state.spectrogramReady;
     renderProject(result);
+    if (spectrogramWasReady) state.spectrogramReady = true;
     showToast('修订已保存，并已更新 MIDI、MusicXML 和 JSON 导出。', 'success');
   } catch (error) {
     showToast(error.message, 'error');
@@ -523,6 +657,29 @@ function bindUI() {
     $(selector).addEventListener('input', markCustomPreset);
   });
   $('#saveButton').addEventListener('click', saveProject);
+  $('#audioPlayer').addEventListener('timeupdate', () => {
+    if (!state.score) return;
+    const duration = Math.max(.15, Number(state.score.input.duration_seconds) || state.audioDuration || 1);
+    const playhead = $('#spectrogramPlayhead');
+    playhead.style.display = 'block';
+    playhead.style.left = `${$('#spectrogramCanvas').clientWidth * ($('#audioPlayer').currentTime / duration)}px`;
+  });
+  $('#tapTempoButton').addEventListener('click', recordBeatTap);
+  $('#clearTapsButton').addEventListener('click', () => {
+    if (!state.score) return;
+    state.score.beat_taps = [];
+    state.score.tempo_mode = 'estimated';
+    renderTapReadout();
+    showToast('打拍记录已清空；保存修订后生效。');
+  });
+  document.addEventListener('keydown', (event) => {
+    const target = event.target;
+    const editing = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement || target?.isContentEditable;
+    if (event.code === 'Space' && !editing && state.project) {
+      event.preventDefault();
+      recordBeatTap();
+    }
+  });
   $('#exportButton').addEventListener('click', () => $('#exportPopover').classList.toggle('hidden'));
   $('#aiReviewButton').addEventListener('click', () => {
     document.querySelector('.ai-panel')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -535,7 +692,7 @@ function bindUI() {
     const last = notes[notes.length - 1];
     const onset = Number(last.offset) + .08;
     notes.push({ id: `user-${Date.now()}`, onset, offset: onset + .35, raw_onset: onset, raw_offset: onset + .35, duration: .35, midi: last.midi, name: last.name, velocity: 88, confidence: .5, source: 'user', user_edited: true });
-    renderNotation(); renderNotesTable();
+    renderNotation(); renderNotesTable(); renderSpectrogram();
   });
   $('#settingsButton').addEventListener('click', () => { clearProfileForm(); renderProfiles(); $('#settingsDialog').showModal(); });
   $('#settingsCloseButton').addEventListener('click', () => $('#settingsDialog').close());

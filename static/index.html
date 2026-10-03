@@ -5,14 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#0f1d3a" />
   <title>HearPitch Local · V260924A</title>
-  <link rel="stylesheet" href="/static/styles.css?v=V260924A-HF4" />
+  <link rel="stylesheet" href="/static/styles.css?v=V260924A-HF5" />
 </head>
 <body>
   <div class="app-shell">
     <header class="topbar">
       <div class="brand">
         <div class="brand-mark" aria-hidden="true">♫</div>
-        <div><strong>HearPitch Local</strong><span>V260924A · HF4 · 本机候选转谱</span></div>
+          <div><strong>HearPitch Local</strong><span>V260924A · HF5 · 声谱图校正工作台</span></div>
       </div>
       <div class="topbar-actions">
         <span class="local-badge">本机处理 · 不上传音频</span>
@@ -109,6 +109,14 @@
         <div class="status-strip" id="statusStrip"></div>
         <div class="metrics" id="metrics"></div>
 
+        <section class="panel spectrogram-panel">
+          <div class="panel-heading"><div><p class="eyebrow">SPECTROGRAM EDITOR</p><h3>声谱图与音符校正</h3></div><div class="spectrogram-actions"><button class="secondary-button" id="tapTempoButton" type="button">打拍（空格）</button><button class="secondary-button" id="clearTapsButton" type="button">清空打拍</button></div></div>
+          <p class="spectrogram-help">声谱图在本机生成。拖动音符块左右边缘可改起止时间，拖动中部上下可改音高；按空格记录拍点（播放时按拍）。</p>
+          <div class="tap-readout" id="tapReadout">尚未打拍 · 播放音频后按空格，或点击“打拍”</div>
+          <div class="spectrogram-scroll" id="spectrogramScroll"><div class="spectrogram-canvas" id="spectrogramCanvas"><img id="spectrogramImage" alt="音频声谱图" /><div class="spectrogram-grid" id="spectrogramGrid"></div><div class="spectrogram-notes" id="spectrogramNotes"></div><div class="spectrogram-playhead" id="spectrogramPlayhead"></div></div></div>
+          <div class="spectrogram-scale"><span>高音</span><span>音名 / 音高</span><span>低音</span></div>
+        </section>
+
         <div class="workspace-grid">
           <section class="panel score-panel">
             <div class="panel-heading">
@@ -172,6 +180,6 @@
   </dialog>
 
   <div class="toast hidden" id="toast"></div>
-  <script src="/static/app.js?v=V260924A-HF4"></script>
+  <script src="/static/app.js?v=V260924A-HF5"></script>
 </body>
 </html>

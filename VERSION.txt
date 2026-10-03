@@ -1,5 +1,5 @@
 HearPitch Local
 Version: V260924A
-Release: HF4.4 — adds the isolated ROSVOT source root to the subprocess Python import path so upstream `utils` modules resolve.
+Release: HF5 — adds a local spectrogram editor with editable note overlays, playback cursor, tap-tempo capture, and score export updates.
 Release type: Windows local-first Python MVP
 Audio privacy: Local processing by default; optional AI review sends structured score events only, never original audio.

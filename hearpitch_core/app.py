@@ -103,6 +103,23 @@ def create_app() -> FastAPI:
             raise _http_error(exc) from exc
         return FileResponse(source, filename=source.name)
 
+    @app.get("/api/projects/{project_id}/spectrogram")
+    async def project_spectrogram(project_id: str) -> FileResponse:
+        try:
+            project = get_project(project_id)["project"]
+            project_dir = Path(project["project_dir"]).resolve()
+            analysis_dir = (project_dir / "analysis").resolve()
+            source = (analysis_dir / "analysis_mono_22050.wav").resolve()
+            if not source.is_relative_to(analysis_dir) or not source.is_file():
+                raise TranscriptionError("项目中没有可绘制的本机分析音频。")
+            destination = project_dir / "analysis" / "spectrogram.png"
+            if not destination.is_file() or destination.stat().st_mtime < source.stat().st_mtime:
+                from .spectrogram import render_spectrogram
+                await run_in_threadpool(render_spectrogram, source, destination)
+        except (TranscriptionError, OSError, KeyError, ValueError) as exc:
+            raise _http_error(exc) from exc
+        return FileResponse(destination, media_type="image/png", filename="spectrogram.png")
+
     @app.post("/api/projects")
     async def create_project(
         audio: UploadFile = File(...),
