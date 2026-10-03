@@ -188,11 +188,22 @@ def main():
     if PYTHON.exists() and SOURCE.exists():
         required = ["checkpoints/rosvot/model.pt", "checkpoints/rosvot/config.yaml", "checkpoints/rwbd/model.pt", "checkpoints/rwbd/config.yaml", "checkpoints/rmvpe/model.pt"]
         if all((SOURCE / path).is_file() for path in required):
-            print("ROSVOT 源码与模型已完整安装；跳过重量下载，只验证 CUDA。", flush=True)
+            print("ROSVOT 源码与模型已完整安装；修复兼容依赖并验证 CUDA，不重复下载权重。", flush=True)
+            run([PYTHON, "-m", "pip", "install", "--upgrade", "wheel", "setuptools<81"])
             check = subprocess.run([PYTHON, "-c", "import torch; print('torch',torch.__version__); print('cuda',torch.cuda.is_available()); print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'NO_CUDA')"], text=True, capture_output=True)
             print(check.stdout, check.stderr)
             if check.returncode or "True" not in check.stdout:
                 raise SystemExit("CUDA 检查失败；请检查驱动或重装 ROSVOT 专用环境。")
+            smoke = subprocess.run(
+                [PYTHON, "-c", "import pkg_resources,pyworld,torch,librosa,pretty_midi,matplotlib,yaml,soundfile; import inference.rosvot; print('inference dependencies import OK')"],
+                cwd=SOURCE,
+                text=True,
+                capture_output=True,
+            )
+            print(smoke.stdout, smoke.stderr)
+            if smoke.returncode:
+                raise SystemExit("ROSVOT 推理依赖自检失败；请保留错误信息。安装器不会重新下载模型权重。")
+            print("ROSVOT + RMVPE CUDA 环境修复完成。", flush=True)
             return
     ROOT.mkdir(parents=True, exist_ok=True)
     temp = Path(tempfile.mkdtemp(prefix="hearpitch-rosvot-install-", dir=ROOT))
@@ -200,7 +211,7 @@ def main():
         if not PYTHON.exists():
             run([base_python, "-m", "venv", VENV])
         print("[HearPitch ROSVOT] 安装 PyTorch 2.1.1 + CUDA 11.8（Windows x64）…", flush=True)
-        run([PYTHON, "-m", "pip", "install", "--upgrade", "pip", "setuptools", "wheel"])
+        run([PYTHON, "-m", "pip", "install", "--upgrade", "pip", "wheel", "setuptools<81"])
         run([PYTHON, "-m", "pip", "install", "torch==2.1.1+cu118", "torchaudio==2.1.1+cu118", "--index-url", "https://download.pytorch.org/whl/cu118"])
         packages = [
             "numpy<2", "scipy", "librosa==0.10.1", "tqdm", "matplotlib>=3.7,<3.9",

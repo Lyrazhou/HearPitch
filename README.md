@@ -88,7 +88,7 @@ HF3 默认使用**保守预设**。上传卡片中的“识别灵敏度”范围
 
 HF4 新增面向歌声的 ROSVOT 转谱引擎，RMVPE 作为其内部音高模块。此功能需要 NVIDIA CUDA、Python 3.9/3.10/3.11 x64 和网络连接；安装器会按 3.9 → 3.10 → 3.11 自动选择，并且**不会替换或改动 HearPitch 主虚拟环境**。安装前请关闭 HearPitch，确认 `py -0p` 与 `nvidia-smi` 可用，然后运行 `install_rosvot_cuda_windows.bat`。检查点约 557 MiB，另需为 CUDA PyTorch 和独立环境留出数 GB 磁盘空间。
 
-安装后重新启动 HearPitch，在“转录引擎”中选择 **ROSVOT + RMVPE**。建议先用 20–60 秒录音测试。ROSVOT MIDI 没有校准过的逐音置信度，因此界面显示“—”，不以音量代替置信度。更完整的依赖、安装和故障排查见 [ROSVOT CUDA Windows 指南](ROSVOT_CUDA_WINDOWS.md)。
+安装后重新启动 HearPitch，在“转录引擎”中选择 **ROSVOT + RMVPE**。建议先用 20–60 秒录音测试。ROSVOT MIDI 没有校准过的逐音置信度，因此界面显示“—”，不以音量代替置信度。HF4.2 起，重新运行安装器可修复独立环境依赖而不重复下载模型。更完整的依赖、安装和故障排查见 [ROSVOT CUDA Windows 指南](ROSVOT_CUDA_WINDOWS.md)。
 
 ## 5. 可选：AI 谱面校对设置
 

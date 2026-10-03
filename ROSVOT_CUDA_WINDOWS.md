@@ -57,6 +57,7 @@ python hearpitch_cli.py transcribe "C:\Music\vocal.wav" --engine rosvot-rmvpe --
 ## Troubleshooting
 
 - **No CUDA / `torch.cuda.is_available()` is false:** update NVIDIA drivers, restart Windows, and re-run the installer. Do not install a different Torch into HearPitch's main `.venv`.
+- **`ModuleNotFoundError: No module named 'pkg_resources'`:** close HearPitch, update to HF4.2 files, then rerun `install_rosvot_cuda_windows.bat`. The installer pins a compatible setuptools version and repairs the existing ROSVOT environment without downloading the model again.
 - **No compatible Python found:** install Python 3.9, 3.10 or 3.11 x64 and Python Launcher. The installer automatically chooses the first available version in that order; the main application environment is never replaced.
 - **Out of memory:** test a shorter audio file and close other GPU-intensive applications.
 - **Missing model/config file:** run the installer again; inspect `Documents\HearPitchLocal\models\rosvot\source\checkpoints`.

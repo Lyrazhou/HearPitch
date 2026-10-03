@@ -1,5 +1,5 @@
 HearPitch Local
 Version: V260924A
-Release: HF4.1 — adds automatic Python 3.9/3.10/3.11 selection to the isolated ROSVOT + RMVPE CUDA installer.
+Release: HF4.2 — pins compatible setuptools (<81) so pyworld can import pkg_resources; installer repairs existing ROSVOT environments without redownloading weights.
 Release type: Windows local-first Python MVP
 Audio privacy: Local processing by default; optional AI review sends structured score events only, never original audio.
