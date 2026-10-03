@@ -181,6 +181,11 @@ def transcribe_with_rosvot(
         env = os.environ.copy()
         env["CUDA_VISIBLE_DEVICES"] = "0"
         env["PYTHONUNBUFFERED"] = "1"
+        # Running inference/rosvot.py makes that subdirectory sys.path[0];
+        # upstream imports top-level packages (e.g. `utils`) from source root.
+        env["PYTHONPATH"] = os.pathsep.join(
+            part for part in (str(source), env.get("PYTHONPATH", "")) if part
+        )
         notes: list[dict[str, Any]] = []
         segment_frames = DEFAULT_SEGMENT_SECONDS * 24000
         overlap_frames = int(SEGMENT_OVERLAP_SECONDS * 24000)

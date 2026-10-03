@@ -58,6 +58,8 @@ def main():
     class FailedProcess:
         returncode = 7
         def __init__(self, *args, **kwargs):
+            assert kwargs["cwd"] == source
+            assert kwargs["env"]["PYTHONPATH"].split(os.pathsep)[0] == str(source)
             self.stdout = kwargs.get("stdout")
             self.stdout.write("synthetic model failure\n")
             self.stdout.flush()
