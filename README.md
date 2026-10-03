@@ -1,4 +1,4 @@
-# HearPitch Local — V260924A
+# HearPitch Local — V261003A
 
 **HearPitch Local** 是一个仅在本机运行的单旋律自动听谱 MVP。它将清唱、口哨或单旋律乐器独奏转换为**可编辑候选谱**，并导出 MIDI、MusicXML 和 JSON。它不是完整混音歌曲、和弦、多声部或自动歌词的可靠转录器。
 
@@ -6,7 +6,7 @@
 
 ## 1. 功能边界
 
-| 功能 | V260924A HF5 状态 |
+| 功能 | V261003A 状态 |
 |---|---|
 | 本地 MP3/WAV/FLAC/OGG/M4A/AAC 输入 | 支持；依赖 FFmpeg 解码非 WAV 格式 |
 | 命令行批量转谱 | 支持；默认不限制时长 |
@@ -17,7 +17,7 @@
 | OpenAI 兼容接口的可选 AI 谱面校对 | 支持；只发送结构化音符事件，**不发送原始音频** |
 | Windows Credential Manager 保存 API Key | 支持；密钥不会写入 `profiles.json` |
 | ROSVOT + RMVPE 歌声转谱 | HF4 可选；需要独立 Python 3.9 + NVIDIA CUDA 环境和单独下载模型 |
-| 本机声谱图校正工作台 | HF5：显示音符候选、播放光标，拖动修改音高/时间；空格打拍估算 BPM |
+| 本机声谱图校正工作台 | V261003A：显示音符候选、播放光标，拖动修改音高/时间；空格打拍估算 BPM |
 | 完整歌曲扒谱、分轨、多声部、自动中文歌词 | 不支持，后续版本再评估 |
 
 ## 2. Windows 快速启动
@@ -35,7 +35,7 @@
 http://127.0.0.1:8765
 ```
 
-> **V260924A HF4：** 在 HF3 基础上新增可选 ROSVOT + RMVPE CUDA 歌声转谱引擎。命令行入口仍为 `hearpitch_cli.py`，核心包为 `hearpitch_core`。旧目录若遗留根目录 `hearpitch.py`，启动脚本会安全忽略；不要执行旧的 `python hearpitch.py ...`。
+> **V261003A：** 在已有 ROSVOT + RMVPE CUDA 歌声转谱引擎基础上，新增本机声谱图校正工作台。命令行入口仍为 `hearpitch_cli.py`，核心包为 `hearpitch_core`。旧目录若遗留根目录 `hearpitch.py`，启动脚本会安全忽略；不要执行旧的 `python hearpitch.py ...`。
 
 网页只监听本机地址 `127.0.0.1`。音频、项目、导出文件和非秘密配置默认保存在：
 
@@ -91,7 +91,7 @@ HF4 新增面向歌声的 ROSVOT 转谱引擎，RMVPE 作为其内部音高模�
 
 安装后重新启动 HearPitch，在“转录引擎”中选择 **ROSVOT + RMVPE**。建议先用 20–60 秒录音测试。ROSVOT MIDI 没有校准过的逐音置信度，因此界面显示“—”，不以音量代替置信度。HF4.2 起，重新运行安装器可修复独立环境依赖而不重复下载模型。更完整的依赖、安装和故障排查见 [ROSVOT CUDA Windows 指南](ROSVOT_CUDA_WINDOWS.md)。
 
-## 4.3 HF5：声谱图校正工作台
+## 4.3 V261003A：声谱图校正工作台
 
 打开任一转谱项目后，HearPitch 会在本机生成声谱图，并以音符块叠加现有引擎的候选结果。点击音符定位回放；拖动音符块左右边缘调整起止时间，拖动中部调整时间和音高。播放时按空格或点击“打拍”记录拍点，多个有效拍点可估算 BPM。编辑后点击“保存修订”，项目谱面和 MIDI、MusicXML、JSON 导出会一起更新。声谱图绘制和音频处理都留在本机。
 

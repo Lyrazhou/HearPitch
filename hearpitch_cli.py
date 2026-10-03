@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""HearPitch Local V260924A command-line entry point.
+"""HearPitch Local V261003A command-line entry point.
 
 Examples:
   python hearpitch_cli.py transcribe C:\\recordings\\melody.wav

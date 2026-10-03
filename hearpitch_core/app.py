@@ -1,4 +1,4 @@
-"""Local web interface for HearPitch Local V260924A."""
+"""Local web interface for HearPitch Local V261003A."""
 
 from __future__ import annotations
 
@@ -59,7 +59,7 @@ def create_app() -> FastAPI:
 
     @app.get("/", include_in_schema=False)
     async def index() -> FileResponse:
-        return FileResponse(STATIC_ROOT / "index.html")
+        return FileResponse(STATIC_ROOT / "index.html", headers={"Cache-Control": "no-store, max-age=0"})
 
     @app.get("/api/health")
     async def health() -> dict[str, Any]:

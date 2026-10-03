@@ -1,5 +1,5 @@
 HearPitch Local
-Version: V260924A
-Release: HF5 — adds a local spectrogram editor with editable note overlays, playback cursor, tap-tempo capture, and score export updates.
+Version: V261003A
+Release: Spectrogram editor — local spectrogram display, editable note overlays, playback cursor, tap-tempo capture, and score export updates.
 Release type: Windows local-first Python MVP
 Audio privacy: Local processing by default; optional AI review sends structured score events only, never original audio.

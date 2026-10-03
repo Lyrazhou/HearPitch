@@ -15,7 +15,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-APP_VERSION = "V260924A"
+APP_VERSION = "V261003A"
+# Keep the credential service stable across display-version updates so existing
+# Windows Credential Manager entries remain available to this user.
 KEYRING_SERVICE = "HearPitchLocal.V260924A"
 PROFILE_SCHEMA_VERSION = 1
 

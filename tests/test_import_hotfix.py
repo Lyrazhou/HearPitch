@@ -30,7 +30,7 @@ def main() -> None:
     finally:
         legacy_file.unlink(missing_ok=True)
     assert result.returncode == 0, result.stderr
-    assert "HearPitch Local V260924A" in result.stdout, result.stdout
+    assert "HearPitch Local V261003A" in result.stdout, result.stdout
     assert "hearpitch_cli.py" in result.stdout, result.stdout
     print(f"Hotfix import test passed with stale hearpitch.py present: {package_file}")
 

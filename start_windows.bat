@@ -2,6 +2,18 @@
 setlocal
 cd /d "%~dp0"
 
+echo [HearPitch] Project folder: %CD%
+echo [HearPitch] Checking the local web port...
+powershell -NoProfile -Command "$c=Get-NetTCPConnection -LocalPort 8765 -State Listen -ErrorAction SilentlyContinue; if($c){exit 1}else{exit 0}"
+if not errorlevel 1 goto port_available
+echo [HearPitch ERROR] Port 8765 is already in use. An older HearPitch server may still be running.
+echo Close its command window first, then run this launcher again.
+echo If unsure, open http://127.0.0.1:8765/api/health to inspect the version currently served.
+pause
+exit /b 2
+
+:port_available
+
 if not exist "hearpitch_core\__init__.py" (
   echo [HearPitch ERROR] Hotfix 3 files are incomplete.
   echo Please fully extract the HearPitch package, then run this file again.
@@ -25,7 +37,7 @@ python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 
 echo.
-echo [HearPitch V260924A HF5] Starting local interface at http://127.0.0.1:8765
+echo [HearPitch V261003A] Starting local interface at http://127.0.0.1:8765
 start "" /b cmd /c "timeout /t 2 /nobreak >nul & start http://127.0.0.1:8765"
 python hearpitch_cli.py serve --host 127.0.0.1 --port 8765
 pause
